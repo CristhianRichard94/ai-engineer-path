@@ -1,0 +1,49 @@
+# docker-compose.jarvis.yml
+# Fish Speech voice server for JARVIS — CPU mode, auto-downloads model on first run.
+#
+# Usage:
+#   cd tools/voice
+#   docker compose -f docker-compose.jarvis.yml up --build
+#
+# API will be available at http://localhost:8080
+# JARVIS tts.py calls it automatically when the container is running.
+#
+# NOTE: First startup takes several minutes to download the ~3 GB checkpoints.
+# Subsequent starts are fast (checkpoints are persisted in ./checkpoints/).
+
+name: jarvis-voice
+
+services:
+  fish-speech:
+    build:
+      context: ./fish-speech
+      dockerfile: docker/Dockerfile
+      target: server
+      args:
+        BACKEND: cpu
+        UV_EXTRA: cpu
+        CUDA_VER: "12.9.0"   # ignored in CPU mode but required by build arg
+    image: jarvis-fish-speech:cpu
+    ports:
+      - "8080:8080"
+    volumes:
+      # Model checkpoints — downloaded on first run, persisted here
+      - ./checkpoints:/app/checkpoints
+      # Reference voices — jarvis/ subfolder contains the voice sample
+      - ./references:/app/references
+      # Custom startup script (overrides the default server entrypoint)
+      - ./docker/jarvis-entrypoint.sh:/app/jarvis-entrypoint.sh:ro
+    entrypoint: ["/bin/bash", "/app/jarvis-entrypoint.sh"]
+    environment:
+      # HuggingFace repo to download on first run
+      HF_REPO: "fishaudio/fish-speech-1.5"
+      CHECKPOINT_DIR: "/app/checkpoints/fish-speech-1.5"
+      # Disable CUDA (CPU inference)
+      CUDA_VISIBLE_DEVICES: ""
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 300s   # allow time for first-run checkpoint download
+      retries: 5
+    restart: unless-stopped

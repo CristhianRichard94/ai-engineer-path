@@ -1,0 +1,24 @@
+# ── Core AI ───────────────────────────────────────────────────────────
+openai                  # GPT-4o brain + Whisper STT
+python-dotenv           # .env loader
+
+# ── Speech ────────────────────────────────────────────────────────────
+pyttsx3                 # offline TTS (fallback voice)
+sounddevice             # microphone capture + Fish Speech playback
+soundfile               # decode WAV returned by Fish Speech
+scipy                   # audio resampling (48k -> 16k)
+numpy                   # audio array processing
+openwakeword            # "Hey JARVIS" wake-word detection
+
+# ── Spotify ───────────────────────────────────────────────────────────
+spotipy                 # Spotify Web API client
+
+# ── System / Windows ──────────────────────────────────────────────────
+psutil                  # CPU / RAM / process management
+requests                # HTTP (weather API)
+keyboard                # global hotkey listener
+pycaw                   # Windows Core Audio API (volume control)
+comtypes                # COM bindings required by pycaw
+
+# ── Testing ───────────────────────────────────────────────────────────
+pytest                  # test runner

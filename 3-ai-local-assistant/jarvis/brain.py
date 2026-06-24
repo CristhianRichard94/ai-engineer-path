@@ -1,0 +1,41 @@
+import openai, json
+
+from constants import JARVIS_SYSTEM
+FALLBACK_INTENTS = {"chat"}   # intents that mean "mini wasn't sure"
+
+class JarvisBrain:
+    def __init__(self, api_key: str):
+        self.client  = openai.OpenAI(api_key=api_key)
+        self.history = []          # rolling conversation memory
+        self.max_history = 10      # keep last 10 turns
+
+    def think(self, user_text: str) -> dict:
+        result = self._call_model("gpt-4o-mini", user_text)
+
+        # if mini defaulted to chat but the command sounds action-like,
+        # escalate to gpt-4o for just this one call
+        if result.get("intent") in FALLBACK_INTENTS and any(
+            kw in user_text.lower()
+            for kw in ["open", "close", "volume", "search", "folder", "system"]
+        ):
+            print("[BRAIN] Escalating to gpt-4o for ambiguous command...")
+            result = self._call_model("gpt-4o", user_text)
+
+        return result
+
+    def _call_model(self, model: str, user_text: str) -> dict:
+        self.history.append({"role": "user", "content": user_text})
+        response = self.client.chat.completions.create(
+            model=model,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": JARVIS_SYSTEM},
+                *self.history[-self.max_history:]
+            ]
+        )
+        raw = response.choices[0].message.content
+        self.history.append({"role": "assistant", "content": raw})
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return {"intent": "chat", "params": {}, "reply": "I didn't follow that, sir."}
