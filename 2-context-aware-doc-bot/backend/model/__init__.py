@@ -8,7 +8,8 @@ from openai import OpenAI
 load_dotenv()
 COLLECTION_NAME = "github_repos"
 QDRANT_URI = os.getenv("QDRANT_URI")
-vector_db_client = QdrantClient(url=QDRANT_URI)
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+vector_db_client = QdrantClient(url=QDRANT_URI, api_key=QDRANT_API_KEY)
 openai_api_key = os.getenv("OPENAI_API_KEY")
 
 
