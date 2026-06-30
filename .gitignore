@@ -51,3 +51,6 @@ next-env.d.ts
 .next
 public
 package-lock.json
+
+qdrant_storage
+results
