@@ -8,5 +8,13 @@ services:
     environment:
       QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
 volumes:
   qdrant_data:
+  redis_data:

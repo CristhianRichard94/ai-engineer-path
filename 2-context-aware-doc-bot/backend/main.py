@@ -1,43 +1,79 @@
 from flask import Flask, request, jsonify, redirect
 from flask_cors import CORS
-from process.main import process_repo
-from model.vector_db import query_repository
+from celery.result import AsyncResult
 from swagger_ui import flask_api_doc
 from logger import get_logger
+from worker.tasks import index_repo_task, get_latest_commit, get_stored_commit
+from model.vector_db import query_repository, is_repo_indexed
+from services.llm import  llm_prompt
 
 log = get_logger()
-
 app = Flask(__name__)
 CORS(app)
-BASE_API_PREFIX = '/api'
-flask_api_doc(app, config_path='./openapi.yaml', url_prefix='/api/docs', title='API docs')
+BASE_API_PREFIX = "/api"
+flask_api_doc(app, config_path="./openapi.yaml", url_prefix="/api/docs", title="API docs")
 
 
-@app.route('/')
+@app.route("/")
 def root_redirect():
-    return redirect('/api/docs')
+    return redirect("/api/docs")
 
 
-@app.route(f'{BASE_API_PREFIX}/prompt', methods=['POST'])
+@app.route(f"{BASE_API_PREFIX}/index", methods=["POST"])
+def index_repo():
+    data = request.get_json()
+    url = data.get("url")
+    if not url:
+        return jsonify({"error": "url is required"}), 400
+
+    current_commit = get_latest_commit(url)
+    stored_commit = get_stored_commit(url)
+
+    if current_commit and current_commit == stored_commit and is_repo_indexed(url):
+        log.info("repo already up to date: url=%s commit=%s", url, current_commit)
+        return jsonify({"status": "already_indexed", "commit": current_commit}), 200
+
+    log.info("dispatching index task: url=%s commit=%s", url, current_commit)
+    task = index_repo_task.delay(url)
+    return jsonify({"job_id": task.id, "commit": current_commit}), 202
+
+
+@app.route(f"{BASE_API_PREFIX}/index/<job_id>", methods=["GET"])
+def index_status(job_id):
+    result = AsyncResult(job_id)
+    body = {"job_id": job_id, "status": result.status.lower()}
+    if result.failed():
+        body["error"] = str(result.result)
+    elif result.successful():
+        body.update(result.result)
+    return jsonify(body)
+
+
+@app.route(f"{BASE_API_PREFIX}/prompt", methods=["POST"])
 def retrieve_augmented_generation():
     data = request.get_json()
-    input_url = data.get('url')
-    prompt = data.get('prompt')
-    if not input_url:
-        return jsonify({"error": "URL is required"}), 400
+    url = data.get("url")
+    user_prompt = data.get("prompt")
+    if not url:
+        return jsonify({"error": "url is required"}), 400
+    if not user_prompt:
+        return jsonify({"error": "prompt is required"}), 400
+    if not is_repo_indexed(url):
+        return jsonify({"error": "repo not indexed, call POST /api/index first"}), 400
 
-    log.info("prompt request: url=%s", input_url)
+    log.info("prompt request: url=%s", url)
     try:
-        process_repo(input_url)
-        context = query_repository(prompt, repo_id=input_url)
-        response = f"{prompt}\n\nContext:\n" + "\n".join([f"- {item['text']} (from {item['file']})" for item in context])
-        log.info("prompt success: url=%s", input_url)
+        context = query_repository(user_prompt, repo_id=url)
+        augmented = f"{user_prompt}\n\nContext:\n" + "\n".join(
+            [f"- {item['text']} (from {item['file']})" for item in context]
+        )
+        response = llm_prompt(augmented)
+        log.info("prompt success: url=%s", url)
         return jsonify({"response": response}), 200
     except Exception as e:
-        log.exception("prompt error: url=%s", input_url)
+        log.exception("prompt error: url=%s", url)
         return jsonify({"error": str(e)}), 500
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run(debug=True)
