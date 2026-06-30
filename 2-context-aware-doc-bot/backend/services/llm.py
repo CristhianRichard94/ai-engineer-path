@@ -3,13 +3,12 @@ from . import openai
 
 
 
-def prompt(prompt, document):
-    combined_input = f"{prompt}\n\n{document}"
+def llm_prompt(prompt, model="gpt-4", temperature=0.7, top_p=1):
     response = openai.responses.create(
-        model="gpt-4",
-        input=combined_input,
-        temperature=0.7,
-        top_p=1,
+        model,
+        input=prompt,
+        temperature=temperature,
+        top_p=top_p,
     )
     return response.output_text
 
@@ -20,5 +19,5 @@ def generate_embedding(text: str):
         model="text-embedding-3-small",
         input=text
     )
-    return embedding
+    return embedding.data[0].embedding
 

@@ -1,28 +1,34 @@
 from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchValue
 import uuid
-from .openai import generate_embedding
+from tqdm import tqdm
+from services.llm import generate_embedding
 from . import vector_db_client, COLLECTION_NAME
 
 def upload_chunks_to_db(files, repo_id: str):
     points = []
+    all_chunks = [
+        (file_data, chunk)
+        for file_data in files
+        for chunk in file_data["nodes"]
+    ]
 
-    for file_data in files:
-        for chunk in file_data["nodes"]:
-            point_id = str(uuid.uuid4())
+    for file_data, chunk in tqdm(all_chunks, desc="Embedding chunks", unit="chunk"):
+        text = chunk
+        point = PointStruct(
+            id=str(uuid.uuid4()),
+            vector=generate_embedding(text),
+            payload={
+                "repo_id": repo_id,
+                "file_path": file_data["file_path"],
+                "file_type": file_data["file_type"],
+                "text": text
+            }
+        )
+        points.append(point)
 
-            embedding = generate_embedding(chunk)
-
-            point = PointStruct(
-                id=point_id,
-                vector=embedding,
-                payload={
-                    "repo_id": repo_id,
-                    "file_path": file_data["file_path"],
-                    "file_type": file_data["file_type"],
-                    "text": chunk
-                }
-            )
-            points.append(point)
+    if not points:
+        print(f"No chunks to index for repo: {repo_id}")
+        return
 
     vector_db_client.upsert(
         collection_name=COLLECTION_NAME,
@@ -33,11 +39,20 @@ def upload_chunks_to_db(files, repo_id: str):
 
 
 
+def is_repo_indexed(repo_id: str) -> bool:
+    result = vector_db_client.scroll(
+        collection_name=COLLECTION_NAME,
+        scroll_filter=Filter(must=[FieldCondition(key="repo_id", match=MatchValue(value=repo_id))]),
+        limit=1,
+    )
+    return len(result[0]) > 0
+
+
 def query_repository(query, repo_id: str, top_k: int = 5):
     query_embedding = generate_embedding(query)
-    search_result = vector_db_client.search(
+    result = vector_db_client.query_points(
         collection_name=COLLECTION_NAME,
-        query_vector=query_embedding,
+        query=query_embedding,
         query_filter=Filter(
             must=[
                 FieldCondition(
@@ -48,6 +63,7 @@ def query_repository(query, repo_id: str, top_k: int = 5):
         ),
         limit=top_k
     )
+    search_result = result.points
     print(f"Retrieved {len(search_result)} chunks for repo: {repo_id} with top_k={top_k}")
 
     retrieved_context = []

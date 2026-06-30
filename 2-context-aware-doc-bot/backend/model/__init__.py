@@ -1,22 +1,15 @@
-import os
-
 from dotenv import load_dotenv
+load_dotenv()
+
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
-from openai import OpenAI
+from config import settings
 
-load_dotenv()
-COLLECTION_NAME = "github_repos"
-QDRANT_URI = os.getenv("QDRANT_URI")
-QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
-vector_db_client = QdrantClient(url=QDRANT_URI, api_key=QDRANT_API_KEY)
-openai_api_key = os.getenv("OPENAI_API_KEY")
+vector_db_client = QdrantClient(url=settings.qdrant_uri, api_key=settings.qdrant_api_key or None)
 
-
-if not vector_db_client.collection_exists(collection_name=COLLECTION_NAME):
-    vector_db_client.recreate_collection(
-        collection_name=COLLECTION_NAME,
-        vectors_config=VectorParams(size=1536, distance=Distance.COSINE),
+if not vector_db_client.collection_exists(collection_name=settings.qdrant_collection):
+    vector_db_client.create_collection(
+        collection_name=settings.qdrant_collection,
+        vectors_config=VectorParams(size=settings.qdrant_vector_size, distance=Distance.COSINE),
     )
-
-openai = OpenAI(api_key=openai_api_key)
+COLLECTION_NAME = settings.qdrant_collection
