@@ -111,6 +111,44 @@ paths:
         '500':
           $ref: '#/components/responses/ServerError'
 
+  /prompt/stream:
+    post:
+      summary: Query an indexed repo with a prompt, streaming the response
+      description: >
+        Same requirements as POST /prompt (repo must be indexed first via POST /index),
+        but streams the LLM response as it is generated using Server-Sent Events (SSE).
+        Each event is a `data:` line containing a JSON payload: `{"delta": "..."}` for
+        each incremental text chunk, a final `{"done": true}` on successful completion,
+        or `{"error": "..."}` if the stream fails after it has already started.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, prompt]
+              properties:
+                url:
+                  type: string
+                  example: https://github.com/CristhianRichard94/spacetrip
+                prompt:
+                  type: string
+                  example: Give me a short summary of this repository and mention key files.
+      responses:
+        '200':
+          description: SSE stream of LLM response chunks with repo context
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: >
+                  Stream of `data: {...}\n\n` events. Payloads are one of
+                  `{"delta": "<text chunk>"}`, `{"done": true}`, or `{"error": "<message>"}`.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
 components:
   responses:
     BadRequest:

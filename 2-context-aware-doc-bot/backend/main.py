@@ -68,48 +68,11 @@ def _validate_prompt_request(data):
     return url, user_prompt, None
 
 
-def _validate_history(history):
-    """Returns an error message string if history is invalid, else None."""
-    if not isinstance(history, list):
-        return "history must be a list"
-    if len(history) > 20:
-        return "history must not exceed 20 entries"
-    for i, entry in enumerate(history):
-        if not isinstance(entry, dict):
-            return f"history[{i}] must be an object"
-        role = entry.get("role")
-        content = entry.get("content")
-        if not isinstance(role, str) or role not in ("user", "assistant"):
-            return f"history[{i}].role must be 'user' or 'assistant'"
-        if not isinstance(content, str):
-            return f"history[{i}].content must be a string"
-    return None
-
-
-def _build_augmented_prompt(url, user_prompt, history=None):
+def _build_augmented_prompt(url, user_prompt):
     context = query_repository(user_prompt, repo_id=url)
-    context_text = "\n".join(
+    return f"{user_prompt}\n\nContext:\n" + "\n".join(
         [f"- {item['text']} (from {item['file']})" for item in context]
     )
-
-    if history:
-        # ponytail: entry-count cap, replace with token counting if context errors appear
-        history = history[-20:]
-
-    if history:
-        history_lines = ["Previous conversation:"]
-        for entry in history:
-            role = entry.get("role", "user").capitalize()
-            content = entry.get("content", "")
-            history_lines.append(f"{role}: {content}")
-        history_text = "\n".join(history_lines)
-        augmented = (
-            f"{history_text}\n\nCurrent question: {user_prompt}\n\nContext:\n{context_text}"
-        )
-    else:
-        augmented = f"{user_prompt}\n\nContext:\n{context_text}"
-
-    return augmented
 
 
 @app.route(f"{BASE_API_PREFIX}/prompt", methods=["POST"])
@@ -119,13 +82,9 @@ def retrieve_augmented_generation():
     if error_response:
         return error_response
 
-    history = data.get("history", [])
-    history_error = _validate_history(history)
-    if history_error:
-        return jsonify({"error": history_error}), 400
     log.info("prompt request: url=%s", url)
     try:
-        augmented = _build_augmented_prompt(url, user_prompt, history)
+        augmented = _build_augmented_prompt(url, user_prompt)
         response = llm_prompt(augmented)
         log.info("prompt success: url=%s", url)
         return jsonify({"response": response}), 200
@@ -141,12 +100,8 @@ def retrieve_augmented_generation_stream():
     if error_response:
         return error_response
 
-    history = data.get("history", [])
-    history_error = _validate_history(history)
-    if history_error:
-        return jsonify({"error": history_error}), 400
     log.info("prompt stream request: url=%s", url)
-    augmented = _build_augmented_prompt(url, user_prompt, history)
+    augmented = _build_augmented_prompt(url, user_prompt)
 
     def generate():
         try:
