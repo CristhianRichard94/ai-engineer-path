@@ -72,8 +72,8 @@ def _validate_history(history):
     """Returns an error message string if history is invalid, else None."""
     if not isinstance(history, list):
         return "history must be a list"
-    if len(history) > 50:
-        return "history must not exceed 50 entries"
+    if len(history) > 20:
+        return "history must not exceed 20 entries"
     for i, entry in enumerate(history):
         if not isinstance(entry, dict):
             return f"history[{i}] must be an object"
