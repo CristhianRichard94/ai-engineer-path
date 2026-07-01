@@ -68,11 +68,33 @@ def _validate_prompt_request(data):
     return url, user_prompt, None
 
 
+def _validate_history(history):
+    """Returns an error message string if history is invalid, else None."""
+    if not isinstance(history, list):
+        return "history must be a list"
+    if len(history) > 50:
+        return "history must not exceed 50 entries"
+    for i, entry in enumerate(history):
+        if not isinstance(entry, dict):
+            return f"history[{i}] must be an object"
+        role = entry.get("role")
+        content = entry.get("content")
+        if not isinstance(role, str) or role not in ("user", "assistant"):
+            return f"history[{i}].role must be 'user' or 'assistant'"
+        if not isinstance(content, str):
+            return f"history[{i}].content must be a string"
+    return None
+
+
 def _build_augmented_prompt(url, user_prompt, history=None):
     context = query_repository(user_prompt, repo_id=url)
     context_text = "\n".join(
         [f"- {item['text']} (from {item['file']})" for item in context]
     )
+
+    if history:
+        # ponytail: entry-count cap, replace with token counting if context errors appear
+        history = history[-20:]
 
     if history:
         history_lines = ["Previous conversation:"]
@@ -98,6 +120,9 @@ def retrieve_augmented_generation():
         return error_response
 
     history = data.get("history", [])
+    history_error = _validate_history(history)
+    if history_error:
+        return jsonify({"error": history_error}), 400
     log.info("prompt request: url=%s", url)
     try:
         augmented = _build_augmented_prompt(url, user_prompt, history)
@@ -117,6 +142,9 @@ def retrieve_augmented_generation_stream():
         return error_response
 
     history = data.get("history", [])
+    history_error = _validate_history(history)
+    if history_error:
+        return jsonify({"error": history_error}), 400
     log.info("prompt stream request: url=%s", url)
     augmented = _build_augmented_prompt(url, user_prompt, history)
 

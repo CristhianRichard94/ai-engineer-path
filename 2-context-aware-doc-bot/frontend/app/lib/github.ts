@@ -19,6 +19,10 @@ class GithubApiError extends Error {
   }
 }
 
+// SECURITY WARNING: NEXT_PUBLIC_GITHUB_TOKEN is embedded in the public JS bundle
+// and is visible to anyone who opens DevTools. Use a fine-grained token scoped to
+// read-only public repo access only. Never use a token with write permissions or
+// private repo access.
 function getAuthHeaders(): Record<string, string> {
   const token = process.env.NEXT_PUBLIC_GITHUB_TOKEN;
   if (token) {
