@@ -1,35 +1,104 @@
 openapi: 3.0.0
 info:
   title: Context-Aware Doc Bot API
-  version: 1.0.0
-  description: A simple API for processing repository URLs and querying context-aware prompts.
+  version: 2.0.0
+  description: Index GitHub repos and query them with context-aware prompts.
 servers:
   - url: /api
-    description: Local API base path
 paths:
-  /prompt:
+  /index:
     post:
-      summary: Process a repository URL and query context for a prompt
+      summary: Trigger async repo indexing
+      description: Dispatches a background job to download, chunk, and embed the repo. Skips if already indexed at the same commit.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
+              required: [url]
               properties:
                 url:
                   type: string
-                  description: Repository URL to process
+                  example: https://github.com/CristhianRichard94/spacetrip
+      responses:
+        '200':
+          description: Already indexed at latest commit — no work needed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: already_indexed
+                  commit:
+                    type: string
+                    example: a1b2c3d4e5f6...
+        '202':
+          description: Job accepted — poll GET /index/{job_id} for status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                  commit:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /index/{job_id}:
+    get:
+      summary: Poll indexing job status
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                  status:
+                    type: string
+                    enum: [pending, started, done, failure]
+                  error:
+                    type: string
+                  url:
+                    type: string
+
+  /prompt:
+    post:
+      summary: Query an indexed repo with a prompt
+      description: Requires the repo to be indexed first via POST /index.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, prompt]
+              properties:
+                url:
+                  type: string
                   example: https://github.com/CristhianRichard94/spacetrip
                 prompt:
                   type: string
-                  description: Question or prompt for the repository context
                   example: Give me a short summary of this repository and mention key files.
-              required:
-                - url
       responses:
         '200':
-          description: Successful response with context-aware reply
+          description: LLM response with repo context
           content:
             application/json:
               schema:
@@ -38,20 +107,27 @@ paths:
                   response:
                     type: string
         '400':
-          description: Bad request; missing required fields
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
+          $ref: '#/components/responses/BadRequest'
         '500':
-          description: Server error
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
+          $ref: '#/components/responses/ServerError'
+
+components:
+  responses:
+    BadRequest:
+      description: Missing or invalid request fields
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+    ServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
