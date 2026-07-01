@@ -10,21 +10,11 @@ This project is part of the **AI Engineer Path** learning initiative, showcasing
 
 ## 🚀 Applications
 
-Each application is organized in its own numbered directory with a dedicated README documenting its specific features, setup instructions, and implementation details.
-
-```
-1-ai-chat/          # AI Chat application
-├── frontend/       # Frontend application
-├── backend/        # Backend API
-└── README.md       # App-specific documentation
-
-2-[app-name]/       # Future applications
-├── frontend/
-├── backend/
-└── README.md
-```
-
-For detailed information about each application, refer to its individual README file.
+| # | App | Description | README |
+|---|---|---|---|
+| 1 | **AI Chat** | Real-time chat interface backed by an OpenAI LLM. Streaming responses, conversation history, React + FastAPI. | [1-ai-chat/README.md](1-ai-chat/README.md) |
+| 2 | **Context-Aware Doc Bot** | Paste a GitHub repo URL → async indexing (Celery + Qdrant) → ask questions about the codebase via RAG. Flask + Next.js. | [2-context-aware-doc-bot/README.md](2-context-aware-doc-bot/README.md) |
+| 3 | **JARVIS — AI Local Voice Assistant** | Wake-word-activated voice assistant for Windows. Speech-to-text → GPT intent routing → TTS (Fish Speech / pyttsx3). | [3-ai-local-assistant/README.md](3-ai-local-assistant/README.md) |
 
 ---
 
@@ -43,14 +33,11 @@ Navigate to any application directory and follow the instructions in its README 
 
 ## 📋 Applications Overview
 
-Each application demonstrates best practices for:
-- AI service integration
-- Full-stack development patterns
-- Real-time communication (where applicable)
-- Responsive UI design
-- Production-ready architecture
-
-For specific features and capabilities, see the README in each application directory.
+| App | Key AI tech | Backend | Frontend |
+|---|---|---|---|
+| AI Chat | OpenAI chat completions, streaming | FastAPI | React / Vite |
+| Context-Aware Doc Bot | OpenAI embeddings, RAG, Qdrant | Flask + Celery | Next.js |
+| JARVIS | Whisper STT, GPT-4o intent routing, Fish Speech TTS | Python (local) | — |
 
 ---
 
