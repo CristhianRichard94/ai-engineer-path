@@ -1,4 +1,5 @@
 import json
+import os
 
 from flask import Flask, request, jsonify, redirect, Response
 from flask_cors import CORS
@@ -121,4 +122,9 @@ def retrieve_augmented_generation_stream():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # Bind to 0.0.0.0 and read PORT from env so this works both locally
+    # (docker-compose maps 5000:5000) and on cloud platforms like Fly.io
+    # that assign the port dynamically.
+    port = int(os.environ.get("PORT", 5000))
+    debug = os.environ.get("APP_ENV", "development") != "production"
+    app.run(host="0.0.0.0", port=port, debug=debug)
