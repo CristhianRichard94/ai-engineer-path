@@ -1,10 +1,11 @@
 import json
 import os
 
+import yaml
 from flask import Flask, request, jsonify, redirect, Response
 from flask_cors import CORS
+from flask_swagger_ui import get_swaggerui_blueprint
 from celery.result import AsyncResult
-from swagger_ui import flask_api_doc
 from logger import get_logger
 from worker.tasks import index_repo_task, get_latest_commit, get_stored_commit
 from model.vector_db import query_repository, is_repo_indexed
@@ -14,7 +15,20 @@ log = get_logger()
 app = Flask(__name__)
 CORS(app)
 BASE_API_PREFIX = "/api"
-flask_api_doc(app, config_path="./openapi.yaml", url_prefix="/api/docs", title="API docs")
+
+SWAGGER_URL = "/api/docs"
+API_SPEC_URL = "/api/docs/openapi.yaml"
+swaggerui_blueprint = get_swaggerui_blueprint(
+    SWAGGER_URL, API_SPEC_URL, config={"app_name": "API docs"}
+)
+app.register_blueprint(swaggerui_blueprint)
+
+
+@app.route(API_SPEC_URL)
+def openapi_spec():
+    spec_path = os.path.join(os.path.dirname(__file__), "openapi.yaml")
+    with open(spec_path) as f:
+        return jsonify(yaml.safe_load(f))
 
 
 @app.route("/")
