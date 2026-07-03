@@ -71,9 +71,16 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black px-4">
+    <div className="flex flex-1 items-center justify-center font-sans px-4">
       <div className="w-full max-w-sm bg-white dark:bg-gray-900 rounded-lg p-6 shadow-sm border border-zinc-200 dark:border-zinc-800">
-        <h1 className="text-xl font-bold mb-4 text-center">Enter passcode</h1>
+        <h1 className="text-xl font-bold text-center">AI Engineer Path</h1>
+        <p className="mt-1 text-center text-sm text-zinc-500 dark:text-zinc-400">
+          A collection of AI demo apps: an AI chat assistant and a doc-bot
+          that answers questions about a GitHub repo.
+        </p>
+        <p className="mt-2 mb-4 text-center text-sm text-zinc-500 dark:text-zinc-400">
+          Enter the passcode to access them.
+        </p>
         <form onSubmit={handleSubmit} noValidate>
           <div className="flex w-full">
             <label htmlFor="passcode" className="sr-only">

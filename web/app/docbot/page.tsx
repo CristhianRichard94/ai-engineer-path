@@ -229,12 +229,12 @@ export default function DocBotPage() {
       {sessionExpired && <SessionExpiredBanner returnTo="/docbot" />}
 
       <div
-        className={`flex flex-col flex-1 items-center bg-zinc-50 font-sans dark:bg-black ${
+        className={`flex flex-col flex-1 items-center font-sans ${
           isReady ? "" : "justify-center"
         }`}
       >
         {!isReady && (
-          <main className="flex flex-1 w-full max-w-3xl flex-col items-center py-16 px-4 sm:py-24 sm:px-16 bg-white dark:bg-black">
+          <main className="flex flex-1 w-full max-w-3xl flex-col items-center py-16 px-4 sm:py-24 sm:px-16">
             <h1 className="text-4xl font-bold mb-3">Context-Aware Doc Bot</h1>
             <p className="text-base text-zinc-600 dark:text-zinc-400 mb-8">
               Index a public GitHub repository, then ask questions about its code
@@ -266,7 +266,7 @@ export default function DocBotPage() {
         )}
 
         {isReady && activeRepo && (
-          <div className="flex flex-col w-full max-w-6xl flex-1 bg-white dark:bg-black">
+          <div className="flex flex-col w-full max-w-6xl flex-1">
             <div className="border-b border-zinc-200 dark:border-zinc-800 px-4 py-3 sm:px-6 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
               <div className="flex-1">
                 <RepoForm

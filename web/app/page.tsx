@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function HubPage() {
   return (
-    <div className="flex flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black px-4">
+    <div className="flex flex-1 items-center justify-center font-sans px-4">
       <div className="w-full max-w-md">
         <h1 className="text-2xl font-bold mb-6 text-center">Choose an app</h1>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
