@@ -1,26 +1,24 @@
-# Fly.io configuration for the ai-chat backend (FastAPI + uvicorn).
-# Deploy from this directory with: fly deploy
+# fly.toml app configuration file generated for ai-chat-backend on 2026-07-03T10:56:41-03:00
 #
-# Before first deploy:
-#   fly apps create ai-chat-backend   (or update `app` below to match your app name)
-#   fly secrets set OPENAI_API_KEY=sk-...
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-app = "ai-chat-backend"
-primary_region = "iad"
+app = 'ai-chat-backend'
+primary_region = 'iad'
 
 [build]
 
 [env]
-  PORT = "8000"
+  PORT = '8000'
 
 [http_service]
   internal_port = 8000
   force_https = true
-  auto_stop_machines = true
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
 
 [[vm]]
-  cpu_kind = "shared"
+  cpu_kind = 'shared'
   cpus = 1
   memory_mb = 512
