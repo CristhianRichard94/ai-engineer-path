@@ -1,6 +1,6 @@
 import re
-import subprocess
 import redis
+import requests
 
 from config import settings
 from worker.app import celery
@@ -21,11 +21,17 @@ def get_latest_commit(url: str) -> str | None:
         return None
     owner, repo = match.groups()
     api_url = f"{settings.github_api_url}/repos/{owner}/{repo}/commits/HEAD"
-    result = subprocess.run(
-        ["curl.exe", "-s", "-H", "Accept: application/vnd.github.sha", api_url],
-        capture_output=True, text=True,
-    )
-    sha = result.stdout.strip().strip('"')
+    try:
+        response = requests.get(
+            api_url,
+            headers={"Accept": "application/vnd.github.sha"},
+            timeout=10,
+        )
+    except requests.RequestException:
+        return None
+    if response.status_code != 200:
+        return None
+    sha = response.text.strip().strip('"')
     return sha if len(sha) == 40 else None
 
 
