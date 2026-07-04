@@ -9,6 +9,7 @@ import { getIndexStatus, postIndex, ApiError } from "./lib/api";
 import { parseRepoUrl } from "./lib/repo-url";
 import type { ChatMessage, IndexJobStatus } from "./lib/types";
 import SessionExpiredBanner from "../components/session-expired-banner";
+import Link from "next/link";
 
 type Phase = "entry" | "indexing" | "ready";
 
@@ -235,6 +236,12 @@ export default function DocBotPage() {
       >
         {!isReady && (
           <main className="flex flex-1 w-full max-w-3xl flex-col items-center py-16 px-4 sm:py-24 sm:px-16">
+            <Link
+              href="/"
+              className="self-start mb-4 text-sm text-blue-300 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+            >
+              ← Back to apps
+            </Link>
             <h1 className="text-4xl font-bold mb-3">Context-Aware Doc Bot</h1>
             <p className="text-base text-zinc-600 dark:text-zinc-400 mb-8">
               Index a public GitHub repository, then ask questions about its code
@@ -268,6 +275,12 @@ export default function DocBotPage() {
         {isReady && activeRepo && (
           <div className="flex flex-col w-full max-w-6xl flex-1">
             <div className="border-b border-zinc-200 dark:border-zinc-800 px-4 py-3 sm:px-6 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+              <Link
+                href="/"
+                className="text-sm text-blue-300 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500 rounded shrink-0"
+              >
+                ← Back to apps
+              </Link>
               <div className="flex-1">
                 <RepoForm
                   value={urlInput}

@@ -6,6 +6,7 @@
 - `ui-designer` — visual design and component specs, built on the UX flow.
 - `software-engineer` — implements features/fixes/refactors.
 - `qa-engineer` — reviews for bugs, edge cases, spec conformance, and ships/no-ship verdicts.
+- `security-engineer` — reviews every feature for vulnerabilities (auth, injection, secrets, data exposure) before merge.
 
 ## Feature Development Workflow
 
@@ -24,15 +25,15 @@ Whenever the user requests a new feature or fix, do NOT stop after one implement
 
 **3. Implement** — Delegate to `software-engineer`. Give it the full feature request, any relevant context (which app, existing conventions, constraints), the UX/UI specs if produced in step 1, and the worktree path to work in.
 
-**4. Review** — Delegate the resulting diff/code to `qa-engineer` for an independent review. Ask it to find bugs, missing edge cases, spec deviations, and anything that would block shipping.
+**4. Review** — Delegate the resulting diff/code to `qa-engineer` for an independent review, and to `security-engineer` for a security check (auth, injection, secrets, data exposure, unsafe deps). Run both on every feature, no exceptions. Ask `qa-engineer` to find bugs, missing edge cases, spec deviations, and anything that would block shipping; ask `security-engineer` for vulnerabilities and a ship/no-ship verdict.
 
-**5. Fix** — If `qa-engineer` reports any blocking issue, send its exact findings back to `software-engineer` to fix inside the same worktree. Do not summarize or soften QA's findings — pass them through directly.
+**5. Fix** — If `qa-engineer` or `security-engineer` reports any blocking issue, send its exact findings back to `software-engineer` to fix inside the same worktree. Do not summarize or soften findings — pass them through directly.
 
-**6. Repeat** steps 4–5 until `qa-engineer` reports no blocking issues, or until 4 review rounds have happened.
+**6. Repeat** steps 4–5 until both `qa-engineer` and `security-engineer` report no blocking issues, or until 4 review rounds have happened.
 
 **7. Stop condition** — If after 4 rounds blocking issues remain, stop and report honestly to the user what's still broken and why, instead of declaring the feature done. Never claim something is "perfect" or "done" when known issues remain.
 
-**8. Merge & cleanup** — Only after `qa-engineer` gives a clean pass:
+**8. Merge & cleanup** — Only after both `qa-engineer` and `security-engineer` give a clean pass:
    - Merge the feature branch into `main`.
    - Remove the worktree and delete the branch:
      ```
@@ -40,7 +41,7 @@ Whenever the user requests a new feature or fix, do NOT stop after one implement
      git branch -d feature/<feature-name>
      ```
 
-**9. Summary** — Summarize to the user: what was built, what QA checked, and any follow-up (env vars, migrations, dependencies to install).
+**9. Summary** — Summarize to the user: what was built, what QA and security checked, and any follow-up (env vars, migrations, dependencies to install).
 
 ## Ground Rules
 

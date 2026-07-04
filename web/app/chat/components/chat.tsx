@@ -71,9 +71,9 @@ function ChatComponent({ onUnauthorized }: ChatComponentProps) {
     setLastMessage(lastMessage);
   };
   return (
-    <div className="w-full h-full flex-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-6 flex flex-col max-h-[500px]">
+    <div className="w-full max-h-[70vh] bg-gray-100 dark:bg-gray-800 rounded-lg p-6 flex flex-col">
       <div
-        className="previous-messages flex-1 overflow-y-auto mb-4 flex flex-col"
+        className="previous-messages flex-1 min-h-0 overflow-y-auto mb-4 flex flex-col"
         ref={chatContainerRef}
       >
         {conversation.map((msg, index) => (
@@ -91,6 +91,13 @@ function ChatComponent({ onUnauthorized }: ChatComponentProps) {
             />
           </div>
         ))}
+        {loadingResponse && (
+          <div className="mb-4 p-4 rounded-lg bg-gray-900 self-start flex gap-1 items-center">
+            <span className="h-2 w-2 rounded-full bg-white/70 animate-bounce [animation-delay:-0.3s]" />
+            <span className="h-2 w-2 rounded-full bg-white/70 animate-bounce [animation-delay:-0.15s]" />
+            <span className="h-2 w-2 rounded-full bg-white/70 animate-bounce" />
+          </div>
+        )}
       </div>
 
       <div className="input-container flex">
