@@ -38,32 +38,48 @@ def root_redirect():
 
 @app.route(f"{BASE_API_PREFIX}/index", methods=["POST"])
 def index_repo():
-    data = request.get_json()
+    data = request.get_json(silent=True)
+    if data is None:
+        return jsonify({"error": "request body must be valid JSON"}), 400
+    if not isinstance(data, dict):
+        return jsonify({"error": "request body must be a JSON object"}), 400
+
     url = data.get("url")
     if not url:
         return jsonify({"error": "url is required"}), 400
+    if not isinstance(url, str):
+        return jsonify({"error": "url must be a string"}), 400
 
-    current_commit = get_latest_commit(url)
-    stored_commit = get_stored_commit(url)
+    try:
+        current_commit = get_latest_commit(url)
+        stored_commit = get_stored_commit(url)
 
-    if current_commit and current_commit == stored_commit and is_repo_indexed(url):
-        log.info("repo already up to date: url=%s commit=%s", url, current_commit)
-        return jsonify({"status": "already_indexed", "commit": current_commit}), 200
+        if current_commit and current_commit == stored_commit and is_repo_indexed(url):
+            log.info("repo already up to date: url=%s commit=%s", url, current_commit)
+            return jsonify({"status": "already_indexed", "commit": current_commit}), 200
 
-    log.info("dispatching index task: url=%s commit=%s", url, current_commit)
-    task = index_repo_task.delay(url)
-    return jsonify({"job_id": task.id, "commit": current_commit}), 202
+        log.info("dispatching index task: url=%s commit=%s", url, current_commit)
+        task = index_repo_task.delay(url)
+        return jsonify({"job_id": task.id, "commit": current_commit}), 202
+    except Exception as e:
+        log.exception("index error: url=%s", url)
+        return jsonify({"error": "internal server error"}), 500
 
 
 @app.route(f"{BASE_API_PREFIX}/index/<job_id>", methods=["GET"])
 def index_status(job_id):
-    result = AsyncResult(job_id)
-    body = {"job_id": job_id, "status": result.status.lower()}
-    if result.failed():
-        body["error"] = str(result.result)
-    elif result.successful():
-        body.update(result.result)
-    return jsonify(body)
+    try:
+        result = AsyncResult(job_id)
+        body = {"job_id": job_id, "status": result.status.lower()}
+        if result.failed():
+            log.exception("index task failed: job_id=%s", job_id, exc_info=result.result)
+            body["error"] = "task failed, see server logs for details"
+        elif result.successful():
+            body.update(result.result)
+        return jsonify(body)
+    except Exception as e:
+        log.exception("index status error: job_id=%s", job_id)
+        return jsonify({"error": "internal server error"}), 500
 
 
 def _validate_prompt_request(data):
