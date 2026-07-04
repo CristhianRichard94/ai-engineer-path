@@ -121,7 +121,7 @@ def retrieve_augmented_generation():
         return jsonify({"response": response}), 200
     except Exception as e:
         log.exception("prompt error: url=%s", url)
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "internal server error"}), 500
 
 
 @app.route(f"{BASE_API_PREFIX}/prompt/stream", methods=["POST"])
@@ -142,7 +142,7 @@ def retrieve_augmented_generation_stream():
             yield f"data: {json.dumps({'done': True})}\n\n"
         except Exception as e:
             log.exception("prompt stream error: url=%s", url)
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield f"data: {json.dumps({'error': 'internal server error'})}\n\n"
 
     response = Response(generate(), mimetype="text/event-stream")
     response.headers["Cache-Control"] = "no-cache"
