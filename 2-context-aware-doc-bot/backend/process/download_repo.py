@@ -6,8 +6,9 @@ import io
 import os
 import re
 import shutil
-import subprocess
 import zipfile
+
+import requests
 
 CLONE_DIR = "temp"
 
@@ -24,17 +25,24 @@ def download_repo(input_url):
 
     zip_path = os.path.join(CLONE_DIR, f"{repo}.zip")
 
-    # ponytail: PowerShell download — bypasses broken OpenSSL, uses .NET TLS stack
+    last_error = None
     for branch in ("main", "master"):
         zip_url = f"https://github.com/{owner}/{repo}/archive/refs/heads/{branch}.zip"
-        result = subprocess.run(
-            ["curl.exe", "-L", "-s", "-o", zip_path, zip_url],
-            capture_output=True, text=True
-        )
-        if result.returncode == 0 and os.path.exists(zip_path):
+        try:
+            with requests.get(zip_url, stream=True, timeout=30, allow_redirects=True) as response:
+                if response.status_code != 200:
+                    last_error = f"HTTP {response.status_code}"
+                    continue
+                with open(zip_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+        except requests.RequestException as e:
+            last_error = str(e)
+            continue
+        if os.path.exists(zip_path):
             break
     else:
-        raise RuntimeError(f"Failed to download {input_url}: {result.stderr}")
+        raise RuntimeError(f"Failed to download {input_url}: {last_error}")
 
     with zipfile.ZipFile(zip_path, "r") as z:
         z.extractall(CLONE_DIR)
