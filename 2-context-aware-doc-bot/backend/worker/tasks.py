@@ -1,8 +1,5 @@
-import hashlib
-import json
-import os
 import re
-import tempfile
+import redis
 import requests
 
 from config import settings
@@ -11,13 +8,11 @@ from process.main import process_repo
 from logger import get_logger
 
 log = get_logger("worker.tasks")
-
-os.makedirs(settings.commit_cache_dir, exist_ok=True)
+_redis = redis.from_url(settings.redis_url)
 
 
 def _commit_key(url: str) -> str:
-    digest = hashlib.sha256(url.encode()).hexdigest()
-    return os.path.join(settings.commit_cache_dir, f"{digest}.json")
+    return f"last_commit:{url}"
 
 
 def get_latest_commit(url: str) -> str | None:
@@ -41,29 +36,12 @@ def get_latest_commit(url: str) -> str | None:
 
 
 def get_stored_commit(url: str) -> str | None:
-    path = _commit_key(url)
-    try:
-        with open(path, "r") as f:
-            return json.load(f).get("sha")
-    except (FileNotFoundError, json.JSONDecodeError):
-        return None
+    val = _redis.get(_commit_key(url))
+    return val.decode() if val else None
 
 
 def store_commit(url: str, sha: str):
-    path = _commit_key(url)
-    fd, tmp_path = tempfile.mkstemp(
-        dir=settings.commit_cache_dir, prefix=".tmp-", suffix=".json"
-    )
-    try:
-        with os.fdopen(fd, "w") as f:
-            json.dump({"sha": sha}, f)
-        os.replace(tmp_path, path)
-    except BaseException:
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
-        raise
+    _redis.set(_commit_key(url), sha)
 
 
 @celery.task(bind=True)

@@ -6,3 +6,4 @@ temp/
 results/
 app.log
 qdrant_storage/
+redis_storage/
