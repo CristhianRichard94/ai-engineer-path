@@ -9,7 +9,7 @@ anyio==4.13.0
 attrs==26.1.0
 banks==2.4.4
 blinker==1.9.0
-celery[redis]==5.5.3
+celery==5.5.3
 certifi==2026.2.25
 charset-normalizer==3.4.7
 click==8.3.2
@@ -99,7 +99,6 @@ python-multipart==0.0.26
 pytz==2026.2
 PyYAML==6.0.3
 qdrant-client==1.18.0
-redis==5.2.1
 referencing==0.37.0
 regex==2026.6.28
 requests==2.33.1

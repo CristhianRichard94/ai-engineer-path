@@ -19,7 +19,7 @@ User prompt → vector search → context injection → OpenAI LLM → answer
 | Layer | Technology |
 |---|---|
 | Backend API | Flask + Flask-CORS |
-| Async workers | Celery + Redis |
+| Async workers | Celery (filesystem broker/backend — single-machine stopgap) |
 | Vector DB | Qdrant |
 | Embeddings + LLM | OpenAI (via langchain-openai / llama-index) |
 | Frontend | Next.js (TypeScript) |
@@ -73,10 +73,11 @@ OPENAI_API_KEY=
 
 QDRANT_API_KEY=
 QDRANT_URL=http://qdrant:6333        # use http://localhost:6333 for local dev without Docker
-
-CELERY_BROKER_URL=redis://redis:6379/0
-CELERY_RESULT_BACKEND=redis://redis:6379/0
 ```
+
+Celery uses a filesystem-based broker/backend (no Redis) — a stopgap for
+single-machine deployments, see `backend/worker/app.py` for details. The
+default directories live under `/tmp` and don't need to be set explicitly.
 
 ### 2. Start the full stack
 
@@ -85,13 +86,12 @@ cd 2-context-aware-doc-bot
 docker compose up --build
 ```
 
-This starts four services:
+This starts three services:
 
 | Service | Port | Description |
 |---|---|---|
 | `api` | 5000 | Flask REST API |
 | `worker` | — | Celery indexing worker |
-| `redis` | 6379 | Celery broker + result backend |
 | `qdrant` | 6333 | Vector database |
 
 ### 3. Start the frontend

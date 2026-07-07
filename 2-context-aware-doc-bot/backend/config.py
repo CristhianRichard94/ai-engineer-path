@@ -15,8 +15,10 @@ class Settings(BaseSettings):
     qdrant_collection: str = "github_repos"
     qdrant_vector_size: int = 1536
 
-    # Redis / Celery
-    redis_url: str = "redis://localhost:6379/0"
+    # Celery (filesystem broker — see worker/app.py for the "ponytail" note
+    # on this stopgap's limitations)
+    celery_broker_dir: str = "/tmp/doc_bot_celery/broker"
+    commit_cache_dir: str = "/tmp/doc_bot_celery/commit_cache"
 
     # GitHub
     github_api_url: str = "https://api.github.com"
