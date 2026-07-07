@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "project-tracker": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["4-project-tracker/src/index.js"]
+    }
+  }
+}

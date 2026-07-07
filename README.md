@@ -15,6 +15,7 @@ This project is part of the **AI Engineer Path** learning initiative, showcasing
 | 1 | **AI Chat** | Real-time chat interface backed by an OpenAI LLM. Streaming responses, conversation history, React + FastAPI. | [1-ai-chat/README.md](1-ai-chat/README.md) |
 | 2 | **Context-Aware Doc Bot** | Paste a GitHub repo URL → async indexing (Celery + Qdrant) → ask questions about the codebase via RAG. Flask + Next.js. | [2-context-aware-doc-bot/README.md](2-context-aware-doc-bot/README.md) |
 | 3 | **JARVIS — AI Local Voice Assistant** | Wake-word-activated voice assistant for Windows. Speech-to-text → GPT intent routing → TTS (Fish Speech / pyttsx3). | [3-ai-local-assistant/README.md](3-ai-local-assistant/README.md) |
+| 4 | **Project Tracker (MCP server)** | Local MCP stdio server exposing backlog (`list_open_tasks`, `add_task`, `mark_task_done`) and `git_status_summary` tools over this repo. | [4-project-tracker/README.md](4-project-tracker/README.md) |
 
 ---
 
@@ -28,6 +29,12 @@ Each application has its own setup instructions documented in its respective REA
 - Required API keys (see app-specific documentation)
 
 Navigate to any application directory and follow the instructions in its README file for setup and deployment.
+
+---
+
+## 🔌 MCP Servers
+
+This repo ships its own MCP server as [app 4](4-project-tracker) — **project-tracker**, a stdio server exposing `list_open_tasks`, `add_task`, `mark_task_done`, and `git_status_summary` over this repo's own `BACKLOG.md`. Wired up via the project-scoped `.mcp.json` (relative path, no machine-specific paths). Claude Code auto-detects it; approve the trust prompt on first use.
 
 ---
 
