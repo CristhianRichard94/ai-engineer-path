@@ -1,11 +1,11 @@
 import json
 import os
+import uuid
 
 import yaml
 from flask import Flask, request, jsonify, redirect, Response
 from flask_cors import CORS
 from flask_swagger_ui import get_swaggerui_blueprint
-from celery.result import AsyncResult
 from logger import get_logger
 from worker.tasks import index_repo_task, get_latest_commit, get_stored_commit
 from model.vector_db import query_repository, is_repo_indexed
@@ -69,7 +69,14 @@ def index_repo():
 @app.route(f"{BASE_API_PREFIX}/index/<job_id>", methods=["GET"])
 def index_status(job_id):
     try:
-        result = AsyncResult(job_id)
+        parsed = uuid.UUID(job_id)
+    except ValueError:
+        return jsonify({"error": "invalid job_id format"}), 400
+    if parsed.version != 4:
+        return jsonify({"error": "invalid job_id format"}), 400
+
+    try:
+        result = index_repo_task.AsyncResult(job_id)
         body = {"job_id": job_id, "status": result.status.lower()}
         if result.failed():
             log.exception("index task failed: job_id=%s", job_id, exc_info=result.result)
@@ -79,7 +86,7 @@ def index_status(job_id):
         return jsonify(body)
     except Exception as e:
         log.exception("index status error: job_id=%s", job_id)
-        return jsonify({"error": "internal server error"}), 500
+        return jsonify({"error": "unable to retrieve job status, try again shortly"}), 500
 
 
 def _validate_prompt_request(data):
