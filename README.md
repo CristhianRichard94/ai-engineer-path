@@ -16,6 +16,7 @@ This project is part of the **AI Engineer Path** learning initiative, showcasing
 | 2 | **Context-Aware Doc Bot** | Paste a GitHub repo URL → async indexing (Celery + Qdrant) → ask questions about the codebase via RAG. Flask + Next.js. | [2-context-aware-doc-bot/README.md](2-context-aware-doc-bot/README.md) |
 | 3 | **JARVIS — AI Local Voice Assistant** | Wake-word-activated voice assistant for Windows. Speech-to-text → GPT intent routing → TTS (Fish Speech / pyttsx3). | [3-ai-local-assistant/README.md](3-ai-local-assistant/README.md) |
 | 4 | **Project Tracker (MCP server)** | Local MCP stdio server exposing backlog (`list_open_tasks`, `add_task`, `mark_task_done`) and `git_status_summary` tools over this repo. | [4-project-tracker/README.md](4-project-tracker/README.md) |
+| 5 | **Web (recruiter-safe host)** | Next.js app that hosts apps 1 and 2 behind a shared passcode gate for public deployment — the actual live entry point for this repo. | [web/README.md](web/README.md) |
 
 ---
 
@@ -119,7 +120,7 @@ See each application's README for specific deployment instructions.
 
 ## 📝 License
 
-This project is open source and available for educational purposes.
+Built for educational purposes. No LICENSE file is present yet — treat as all-rights-reserved until one is added.
 
 ---
 
