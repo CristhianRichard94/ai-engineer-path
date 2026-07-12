@@ -26,6 +26,7 @@ type TodoItemProps = {
     todo: Todo;
     source: string;
     onChange: (updater: (prev: Todo[]) => Todo[]) => void;
+    onSavingChange?: (id: string, isSaving: boolean) => void;
 };
 
 class AbortedPatchError extends Error {
@@ -55,10 +56,11 @@ async function patchTodo(source: string, id: string, updates: Record<string, unk
     }
 }
 
-export default function TodoItem({ todo, source, onChange }: TodoItemProps) {
+export default function TodoItem({ todo, source, onChange, onSavingChange }: TodoItemProps) {
     const [status, setStatus] = useState<TodoStatus>(todo.status);
     const [doneDate, setDoneDate] = useState<Date | string | undefined>(todo.doneDate);
     const [statusSaving, setStatusSaving] = useState(false);
+    const [resortPending, setResortPending] = useState(false);
     const [statusError, setStatusError] = useState<string | null>(null);
     const [showStatusSpinner, setShowStatusSpinner] = useState(false);
     const statusTokenRef = useRef(0);
@@ -86,8 +88,17 @@ export default function TodoItem({ todo, source, onChange }: TodoItemProps) {
             if (statusSpinnerTimeoutRef.current) clearTimeout(statusSpinnerTimeoutRef.current);
             if (descriptionSpinnerTimeoutRef.current) clearTimeout(descriptionSpinnerTimeoutRef.current);
             if (resortTimeoutRef.current) clearTimeout(resortTimeoutRef.current);
+            onSavingChange?.(todo.id, false);
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Report combined "busy" state (status saving, pending resort, or description saving)
+    // to the parent so poll merges can avoid clobbering local optimistic state.
+    useEffect(() => {
+        onSavingChange?.(todo.id, statusSaving || resortPending || descriptionSaving);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [statusSaving, resortPending, descriptionSaving, todo.id]);
 
     useEffect(() => {
         setStatus(todo.status);
@@ -126,6 +137,11 @@ export default function TodoItem({ todo, source, onChange }: TodoItemProps) {
             updates.doneDate = null;
         }
 
+        // Register the busy flag synchronously, before any async work starts,
+        // so a poll can never land in the gap between the optimistic update
+        // and the effect-based registration (which runs after render commit).
+        onSavingChange?.(todo.id, true);
+
         setStatus(newStatus);
         setDoneDate(newDoneDate);
         setStatusError(null);
@@ -149,11 +165,16 @@ export default function TodoItem({ todo, source, onChange }: TodoItemProps) {
             setShowStatusSpinner(false);
             setStatusSaving(false);
             if (resortTimeoutRef.current) clearTimeout(resortTimeoutRef.current);
+            setResortPending(true);
             resortTimeoutRef.current = setTimeout(() => {
-                if (statusTokenRef.current !== token) return;
+                if (statusTokenRef.current !== token) {
+                    setResortPending(false);
+                    return;
+                }
                 onChange((prev) =>
                     prev.map((t) => (t.id === todo.id ? { ...t, status: newStatus, doneDate: newDoneDate } : t))
                 );
+                setResortPending(false);
             }, 600);
         } catch (error) {
             if (error instanceof AbortedPatchError) return;
@@ -187,6 +208,11 @@ export default function TodoItem({ todo, source, onChange }: TodoItemProps) {
             setIsEditingDescription(false);
             return;
         }
+
+        // Register the busy flag synchronously, before any async work starts,
+        // so a poll can never land in the gap between the optimistic update
+        // and the effect-based registration (which runs after render commit).
+        onSavingChange?.(todo.id, true);
 
         const previousDescription = description;
         setDescription(trimmed);

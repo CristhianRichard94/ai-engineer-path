@@ -1,8 +1,10 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Todo, TodoStatus } from "../types/todo";
 import TodoItem from "./todo-item";
 import AddTodoForm from "./add-todo-form";
+
+const POLL_INTERVAL_MS = 20000;
 
 const STATUS_RANK: Record<string, number> = {
   [TodoStatus.InProgress]: 0,
@@ -20,6 +22,19 @@ export default function TodoList({ source }: { source: string }) {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const busyIdsRef = useRef<Set<string>>(new Set());
+  // Ids of todos created locally that haven't yet been confirmed present in a
+  // poll response. Protects against a poll racing the (eventually consistent)
+  // Sheet write and silently dropping the new todo from the list.
+  const pendingNewIdsRef = useRef<Set<string>>(new Set());
+
+  const handleSavingChange = (id: string, isSaving: boolean) => {
+    if (isSaving) {
+      busyIdsRef.current.add(id);
+    } else {
+      busyIdsRef.current.delete(id);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -56,7 +71,62 @@ export default function TodoList({ source }: { source: string }) {
     };
   }, [source, retryCount]);
 
+  // Poll the backing sheet periodically so edits made elsewhere (another tab,
+  // device, or directly in the Sheet) show up without a manual refresh.
+  useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+
+    const poll = async () => {
+      if (inFlight) return;
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      inFlight = true;
+      try {
+        const response = await fetch(`/api/todos?source=${encodeURIComponent(source)}`);
+        if (!response.ok) {
+          throw new Error(`Poll failed with status ${response.status}`);
+        }
+        const { todos: fetched } = await response.json();
+        if (cancelled) return;
+        // Any pending-created id that's now present in the poll response is
+        // confirmed written to the Sheet, so it no longer needs protecting.
+        for (const t of fetched as Todo[]) {
+          pendingNewIdsRef.current.delete(t.id);
+        }
+        setTodos((prev) => {
+          const prevById = new Map(prev.map((t) => [t.id, t]));
+          const merged: Todo[] = fetched.map((t: Todo) =>
+            busyIdsRef.current.has(t.id) && prevById.has(t.id) ? (prevById.get(t.id) as Todo) : t
+          );
+          // Keep any locally-known todos that are busy (or newly created and not yet
+          // confirmed) but weren't (yet) returned by the poll, to avoid dropping them.
+          for (const t of prev) {
+            if (
+              (busyIdsRef.current.has(t.id) || pendingNewIdsRef.current.has(t.id)) &&
+              !merged.some((m) => m.id === t.id)
+            ) {
+              merged.push(t);
+            }
+          }
+          return merged;
+        });
+      } catch (error) {
+        // Polling failures are silent — the retry banner is reserved for the initial load.
+        console.error(error);
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    const intervalId = setInterval(poll, POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [source]);
+
   const handleCreated = (todo: Todo) => {
+    pendingNewIdsRef.current.add(todo.id);
     setTodos((prev) => [...prev, todo]);
   };
 
@@ -92,7 +162,7 @@ export default function TodoList({ source }: { source: string }) {
           <ul className="flex flex-col gap-2 w-full flex-1 min-h-0 overflow-y-auto pr-1 pb-16">
             {sortedTodos.map((todo) => (
               <li key={todo.id} className="w-full">
-                <TodoItem todo={todo} source={source} onChange={setTodos} />
+                <TodoItem todo={todo} source={source} onChange={setTodos} onSavingChange={handleSavingChange} />
               </li>
             ))}
           </ul>
