@@ -86,14 +86,21 @@ class SheetsService {
         };
     }
 
+    private sanitizeCell(value: string): string {
+        if (/^[=+\-@\t\r]/.test(value)) {
+            return `'${value}`;
+        }
+        return value;
+    }
+
     private todoToRow(todo: Todo): string[] {
         return [
-            todo.id,
-            todo.description,
-            todo.status,
-            todo.source,
-            todo.created.toISOString(),
-            todo.doneDate ? todo.doneDate.toISOString() : "",
+            this.sanitizeCell(todo.id),
+            this.sanitizeCell(todo.description),
+            this.sanitizeCell(todo.status),
+            this.sanitizeCell(todo.source),
+            this.sanitizeCell(todo.created.toISOString()),
+            todo.doneDate ? this.sanitizeCell(todo.doneDate.toISOString()) : "",
         ];
     }
 

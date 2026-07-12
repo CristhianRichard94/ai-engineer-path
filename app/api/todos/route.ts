@@ -1,5 +1,9 @@
+// TODO: this endpoint (GET/POST/PATCH/DELETE) has no auth/ownership checks — needs to be added.
 import sheetsService from "@/app/services/sheets-service";
+import { Todo, TodoStatus } from "@/app/types/todo";
 import { NextRequest, NextResponse } from "next/server";
+
+const MAX_DESCRIPTION_LENGTH = 500;
 
 export async function GET(request: NextRequest) {
     const source = request.nextUrl.searchParams.get("source");
@@ -15,7 +19,25 @@ export async function POST(request: NextRequest) {
     if (!source || !todo) {
         return NextResponse.json({ error: "Missing source or todo" }, { status: 400 });
     }
-    const created = await sheetsService.addTodo(source, todo);
+    if (typeof source !== "string") {
+        return NextResponse.json({ error: "Invalid source" }, { status: 400 });
+    }
+    if (typeof todo.description !== "string" || todo.description.trim().length === 0) {
+        return NextResponse.json({ error: "Description must be a non-empty string" }, { status: 400 });
+    }
+    if (todo.description.trim().length > MAX_DESCRIPTION_LENGTH) {
+        return NextResponse.json({ error: `Description must be ${MAX_DESCRIPTION_LENGTH} characters or fewer` }, { status: 400 });
+    }
+
+    const newTodo: Omit<Todo, "created"> & { created?: Date } = {
+        id: crypto.randomUUID(),
+        description: todo.description.trim(),
+        status: TodoStatus.Pending,
+        source,
+        created: new Date(),
+    };
+
+    const created = await sheetsService.addTodo(source, newTodo);
     return NextResponse.json({ todo: created });
 }
 
