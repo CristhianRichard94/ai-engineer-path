@@ -16,6 +16,13 @@ const STATUS_CLASSES: Record<string, string> = {
         "text-red-700 bg-red-50 border-red-300 dark:text-red-300 dark:bg-red-900/50 dark:border-red-600/70",
 };
 
+const STATUS_CARD_BG: Record<string, string> = {
+    [TodoStatus.InProgress]: "bg-amber-50/60 dark:bg-amber-950/30",
+    [TodoStatus.Pending]:    "bg-white dark:bg-zinc-900",
+    [TodoStatus.Completed]:  "bg-green-50/60 dark:bg-green-950/30",
+    [TodoStatus.Cancelled]:  "bg-red-50/60 dark:bg-red-950/30",
+};
+
 const BASE_SELECT_CLASSES =
     "text-xs font-medium rounded-md border pl-2 pr-6 py-1 h-7 min-w-[104px] appearance-none focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 dark:focus:ring-offset-zinc-900 disabled:opacity-60 disabled:cursor-wait cursor-pointer hover:brightness-95 dark:hover:brightness-110 transition-[filter]";
 
@@ -278,7 +285,7 @@ export default function TodoItem({ todo, source, onChange, onSavingChange }: Tod
     const doneDateShort = doneDate ? getShortDateString(doneDate) : null;
 
     return (
-        <div className={`todo ${status} group flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3 w-full max-w-3xl px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-zinc-900 hover:border-gray-400 dark:hover:border-gray-600 transition-colors`}>
+        <div className={`todo ${status} group flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3 w-full max-w-3xl px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md ${STATUS_CARD_BG[status]} hover:border-gray-400 dark:hover:border-gray-600 transition-colors`}>
             {isEditingDescription ? (
                 <input
                     ref={descriptionInputRef}
@@ -317,7 +324,11 @@ export default function TodoItem({ todo, source, onChange, onSavingChange }: Tod
                             className={`${BASE_SELECT_CLASSES} ${statusError ? "border-red-500 dark:border-red-500" : STATUS_CLASSES[status]}`}
                         >
                             {STATUS_OPTIONS.map((option) => (
-                                <option key={option} value={option}>
+                                <option
+                                    key={option}
+                                    value={option}
+                                    className="bg-[#1f2937] text-white"
+                                >
                                     {option}
                                 </option>
                             ))}
