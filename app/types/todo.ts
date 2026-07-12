@@ -9,7 +9,7 @@ export type Todo = {
 
 
 export enum TodoStatus  {
-    Pending = "pending",
+    Pending = "todo",
     Completed = "done",
     InProgress = "in-progress",
     Cancelled = "cancelled",

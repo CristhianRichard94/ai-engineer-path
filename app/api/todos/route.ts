@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
         id: crypto.randomUUID(),
         description: todo.description.trim(),
         status: TodoStatus.Pending,
-        source,
+        source: "app",
         created: new Date(),
     };
 
