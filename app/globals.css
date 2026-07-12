@@ -26,17 +26,5 @@ body {
 }
 
 .todo {
-  transition: background-color 0.3s ease, color 0.3s ease;
-}
-.todo.pending {
-  background-color: #333333;
-}
-.todo.done {
-  background-color: #155724;
-}
-.todo.cancelled {
-  background-color: #721c24;
-}
-.todo.in-progress {
-  background-color: #856404;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
 }

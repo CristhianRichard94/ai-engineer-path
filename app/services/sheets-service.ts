@@ -76,17 +76,22 @@ class SheetsService {
 
     private rowToTodo(row: string[]): Todo {
         const [id, description, status, source, created, doneDate] = row;
+        const createdDate = new Date(created);
         return {
             id,
             description,
             source,
             status: (status || "pending") as TodoStatus,
             doneDate: doneDate ? new Date(doneDate) : undefined,
-            created: new Date(created),
+            created: isNaN(createdDate.getTime()) ? new Date(0) : createdDate,
         };
     }
 
-    private sanitizeCell(value: string): string {
+    private toISOString(value: Date | string): string {
+        return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+    }
+
+    private sanitizeForSheet(value: string): string {
         if (/^[=+\-@\t\r]/.test(value)) {
             return `'${value}`;
         }
@@ -95,12 +100,12 @@ class SheetsService {
 
     private todoToRow(todo: Todo): string[] {
         return [
-            this.sanitizeCell(todo.id),
-            this.sanitizeCell(todo.description),
-            this.sanitizeCell(todo.status),
-            this.sanitizeCell(todo.source),
-            this.sanitizeCell(todo.created.toISOString()),
-            todo.doneDate ? this.sanitizeCell(todo.doneDate.toISOString()) : "",
+            this.sanitizeForSheet(todo.id),
+            this.sanitizeForSheet(todo.description),
+            this.sanitizeForSheet(todo.status),
+            this.sanitizeForSheet(todo.source),
+            this.sanitizeForSheet(this.toISOString(todo.created)),
+            todo.doneDate ? this.sanitizeForSheet(this.toISOString(todo.doneDate)) : "",
         ];
     }
 
@@ -140,14 +145,22 @@ class SheetsService {
         return newTodo;
     }
 
-    async updateTodo(source: string, id: string, updates: Partial<Omit<Todo, "id">>): Promise<Todo> {
+    async updateTodo(
+        source: string,
+        id: string,
+        updates: Partial<Omit<Todo, "id">> & { doneDate?: Date | string | null }
+    ): Promise<Todo> {
         const spreadsheetId = this.extractSpreadsheetId(source);
         const todos = await this.getTodos(source);
         const existing = todos.find((todo) => todo.id === id);
         if (!existing) {
             throw new Error(`Todo ${id} not found`);
         }
-        const updated: Todo = { ...existing, ...updates };
+        const updated: Todo = {
+            ...existing,
+            ...updates,
+            doneDate: updates.doneDate === null ? undefined : (updates.doneDate ?? existing.doneDate),
+        };
         const rowNumber = await this.findRowNumber(spreadsheetId, id);
         await this.request(spreadsheetId, `/values/${SHEET_NAME}!A${rowNumber}:F${rowNumber}?valueInputOption=RAW`, {
             method: "PUT",
