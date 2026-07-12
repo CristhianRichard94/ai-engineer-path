@@ -7,17 +7,17 @@ const STATUS_OPTIONS = Object.values(TodoStatus);
 
 const STATUS_CLASSES: Record<string, string> = {
     [TodoStatus.InProgress]:
-        "text-amber-700 bg-amber-50 border-amber-300 dark:text-amber-300 dark:bg-amber-950/40 dark:border-amber-800",
+        "text-amber-700 bg-amber-50 border-amber-300 dark:text-amber-300 dark:bg-amber-900/50 dark:border-amber-600/70",
     [TodoStatus.Pending]:
-        "text-gray-700 bg-gray-100 border-gray-300 dark:text-gray-300 dark:bg-gray-800/60 dark:border-gray-600",
+        "text-gray-700 bg-gray-100 border-gray-300 dark:text-gray-300 dark:bg-gray-700/70 dark:border-gray-500",
     [TodoStatus.Completed]:
-        "text-green-700 bg-green-50 border-green-300 dark:text-green-300 dark:bg-green-950/40 dark:border-green-800",
+        "text-green-700 bg-green-50 border-green-300 dark:text-green-300 dark:bg-green-900/50 dark:border-green-600/70",
     [TodoStatus.Cancelled]:
-        "text-red-700 bg-red-50 border-red-300 dark:text-red-300 dark:bg-red-950/40 dark:border-red-800",
+        "text-red-700 bg-red-50 border-red-300 dark:text-red-300 dark:bg-red-900/50 dark:border-red-600/70",
 };
 
 const BASE_SELECT_CLASSES =
-    "text-xs font-medium rounded-md border px-2 py-1 h-7 min-w-[104px] appearance-none focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 dark:focus:ring-offset-zinc-900 disabled:opacity-60 disabled:cursor-wait cursor-pointer";
+    "text-xs font-medium rounded-md border pl-2 pr-6 py-1 h-7 min-w-[104px] appearance-none focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 dark:focus:ring-offset-zinc-900 disabled:opacity-60 disabled:cursor-wait cursor-pointer hover:brightness-95 dark:hover:brightness-110 transition-[filter]";
 
 const SPINNER_CLASSES =
     "inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin text-gray-400 dark:text-gray-500 ml-1.5";
@@ -283,18 +283,28 @@ export default function TodoItem({ todo, source, onChange }: TodoItemProps) {
 
             <div className="flex flex-row items-center justify-between gap-2 w-full sm:w-auto sm:contents">
                 <div className="flex flex-col shrink-0">
-                    <select
-                        value={status}
-                        disabled={statusSaving}
-                        onChange={handleStatusChange}
-                        className={`${BASE_SELECT_CLASSES} ${statusError ? "border-red-500 dark:border-red-500" : STATUS_CLASSES[status]}`}
-                    >
-                        {STATUS_OPTIONS.map((option) => (
-                            <option key={option} value={option}>
-                                {option}
-                            </option>
-                        ))}
-                    </select>
+                    <div className="relative inline-block">
+                        <select
+                            value={status}
+                            disabled={statusSaving}
+                            onChange={handleStatusChange}
+                            className={`${BASE_SELECT_CLASSES} ${statusError ? "border-red-500 dark:border-red-500" : STATUS_CLASSES[status]}`}
+                        >
+                            {STATUS_OPTIONS.map((option) => (
+                                <option key={option} value={option}>
+                                    {option}
+                                </option>
+                            ))}
+                        </select>
+                        <svg
+                            aria-hidden="true"
+                            viewBox="0 0 20 20"
+                            fill="none"
+                            className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-current opacity-70"
+                        >
+                            <path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                    </div>
                     {showStatusSpinner && <span className={SPINNER_CLASSES} aria-hidden />}
                 </div>
 

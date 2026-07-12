@@ -5,26 +5,26 @@ export default function Home() {
   "https://docs.google.com/spreadsheets/d/1U-r0YqCZ2oXnExBnwdVUtEfVx7fgG8oSLaEG79dN23U"
 
   return (
-    <div className="flex flex-col flex-1  justify-center bg-zinc-50 font-sans dark:bg-black">
-      <header className="flex flex-col items-center justify-center w-full h-24 border-b dark:border-white/20 ">
-        <h1 className="text-3xl font-bold text-black dark:text-white m-4">
+    <div className="flex flex-col h-full min-h-0 bg-zinc-50 font-sans dark:bg-black">
+      <header className="flex flex-col items-center justify-center w-full h-14 shrink-0 border-b dark:border-white/20 ">
+        <h1 className="text-lg font-bold text-black dark:text-white">
           TODO App
         </h1>
       </header>
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
+      <main className="flex flex-1 min-h-0 w-full max-w-3xl mx-auto flex-col items-center gap-3 py-4 px-4 sm:px-6 bg-white dark:bg-black sm:items-start">
         <TodoList source={source} />
       </main>
-           <p className="text-sm text-black dark:text-white position-absolute bottom-4 right-0 text-center">
-          Made with ❤️ by{" "}
-          <a
-            className="underline underline-offset-2"
-            href="https://cristhian-richard.com"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Cristhian Richard
-          </a>
-        </p>
+      <p className="fixed bottom-4 right-6 z-10 text-xs text-black dark:text-white bg-white/70 dark:bg-slate-950/50 border border-black/10 dark:border-white/10 rounded-full px-3 py-1.5 backdrop-blur-md shadow-sm">
+        Made with ❤️ by{" "}
+        <a
+          className="underline underline-offset-2"
+          href="https://cristhian-richard.com"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Cristhian Richard
+        </a>
+      </p>
     </div>
   );
 }

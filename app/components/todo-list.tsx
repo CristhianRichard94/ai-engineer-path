@@ -74,10 +74,10 @@ export default function TodoList({ source }: { source: string }) {
   }, [todos]);
 
     return (
-        <>
+        <div className="flex flex-col w-full flex-1 min-h-0 gap-3">
           <AddTodoForm source={source} onCreated={handleCreated} />
           {fetchError && (
-            <div role="alert" className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
+            <div role="alert" className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 shrink-0">
               <span aria-hidden="true">⚠</span>
               <span>{fetchError}</span>
               <button
@@ -89,13 +89,13 @@ export default function TodoList({ source }: { source: string }) {
               </button>
             </div>
           )}
-          <ul className="flex flex-col gap-2 w-full">
+          <ul className="flex flex-col gap-2 w-full flex-1 min-h-0 overflow-y-auto pr-1 pb-16">
             {sortedTodos.map((todo) => (
               <li key={todo.id} className="w-full">
                 <TodoItem todo={todo} source={source} onChange={setTodos} />
               </li>
             ))}
           </ul>
-        </>
+        </div>
     );
     }
