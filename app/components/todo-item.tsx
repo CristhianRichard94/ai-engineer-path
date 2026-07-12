@@ -346,6 +346,12 @@ export default function TodoItem({ todo, source, onChange, onSavingChange }: Tod
                 </div>
 
                 <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 shrink-0 whitespace-nowrap">
+                    <span
+                        title={`Source: ${todo.source}`}
+                        className="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400 truncate max-w-[80px]"
+                    >
+                        {todo.source}
+                    </span>
                     <span title={createdISO}>{createdShort}</span>
                     {doneDateShort && (
                         <>

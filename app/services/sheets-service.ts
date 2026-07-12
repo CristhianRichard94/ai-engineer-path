@@ -80,7 +80,7 @@ class SheetsService {
         return {
             id,
             description,
-            source,
+            source: source || "unknown",
             status: ((status === "pending" ? "todo" : status) || "todo") as TodoStatus,
             doneDate: doneDate ? new Date(doneDate) : undefined,
             created: isNaN(createdDate.getTime()) ? new Date(0) : createdDate,
