@@ -29,12 +29,15 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: `Description must be ${MAX_DESCRIPTION_LENGTH} characters or fewer` }, { status: 400 });
     }
 
+    const now = new Date();
+    const timestamp = now.toISOString().replace(/[-:T]/g, "").slice(0, 14);
+
     const newTodo: Omit<Todo, "created"> & { created?: Date } = {
-        id: crypto.randomUUID(),
+        id: `id-${timestamp}`,
         description: todo.description.trim(),
         status: TodoStatus.Pending,
         source: "app",
-        created: new Date(),
+        created: now,
     };
 
     const created = await sheetsService.addTodo(source, newTodo);
