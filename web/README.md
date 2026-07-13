@@ -1,26 +1,22 @@
 # web — Recruiter-safe host app
 
-Single Next.js (App Router) app that hosts `1-ai-chat`, `2-context-aware-doc-bot`,
-and `4-project-tracker`'s frontend behind a shared passcode gate, so the
+Single Next.js (App Router) app that hosts both `1-ai-chat` and
+`2-context-aware-doc-bot` frontends behind a shared passcode gate, so the
 whole site can be put behind a public URL without exposing the
-OpenAI-key-backed backends (or the todo sheet) to unauthenticated traffic/bots.
+OpenAI-key-backed backends to unauthenticated traffic/bots.
 
 ## Routes
 
 - `/login` — passcode entry (unauthenticated).
-- `/` — hub listing the apps (authenticated).
+- `/` — hub listing the two apps (authenticated).
 - `/chat` — the AI Chat UI (ported from `1-ai-chat/frontend`), proxied to the
   chat backend via `/api/chat/*`.
 - `/docbot` — the Context-Aware Doc Bot UI (ported from
   `2-context-aware-doc-bot/frontend`), proxied to the doc-bot backend via
   `/api/docbot/*`.
-- `/todo` — the Todo UI (ported from `4-project-tracker/frontend`), talks
-  directly to the Todos Google Sheet via `/api/todos` (no separate backend —
-  same Sheets API pattern as `4-project-tracker/mcp-server`).
 
 The two FastAPI backends (`1-ai-chat/backend`, `2-context-aware-doc-bot/backend`)
-are unchanged — run them separately. This app proxies to them, and talks to
-the Sheet directly for `/todo`.
+are unchanged — run them separately. This app only proxies to them.
 
 ## Auth model
 
@@ -30,8 +26,8 @@ the Sheet directly for `/todo`.
   `SESSION_SECRET` is set (7-day sliding expiry — renewed on every
   authenticated request by `middleware.ts`). `Secure` is enforced in
   production only, so local `http://localhost` dev keeps working.
-- `middleware.ts` protects `/`, `/chat`, `/docbot`, `/todo`, and the
-  `/api/chat/*` / `/api/docbot/*` / `/api/todos` routes. Unauthenticated page requests redirect to
+- `middleware.ts` protects `/`, `/chat`, `/docbot`, and the `/api/chat/*` /
+  `/api/docbot/*` proxy routes. Unauthenticated page requests redirect to
   `/login?returnTo=<path>`; unauthenticated proxy requests return `401 JSON`
   so the page can show a dismissible "session expired" banner instead of a
   jarring redirect.
@@ -54,16 +50,6 @@ DOCBOT_BACKEND_URL=http://127.0.0.1:5000
 # SECURITY WARNING: this is a NEXT_PUBLIC_ var and ends up in the client JS
 # bundle. Use a fine-grained, read-only, public-repo-only token if set.
 NEXT_PUBLIC_GITHUB_TOKEN=
-
-# Required for /todo — Google service account with Editor access on the
-# Todos sheet. See 4-project-tracker/ARCHITECTURE.md for the sheet ID/schema.
-GOOGLE_SERVICE_ACCOUNT_EMAIL=local-sa-todo-app@genai-406713.iam.gserviceaccount.com
-GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-GOOGLE_SHEETS_SHEET_NAME=Todos
-
-# Optional — override the sheet URL /todo reads from (defaults to the
-# same sheet used by 4-project-tracker/mcp-server).
-NEXT_PUBLIC_TODO_SOURCE=
 ```
 
 `SESSION_SECRET` should be a long random value, e.g. generate one with:
@@ -90,5 +76,4 @@ npm run dev
 ```
 
 Then open http://localhost:3000, enter the passcode from `SITE_PASSCODE`,
-and use the hub to reach any app. `/todo` needs no extra local process —
-it talks to the Sheet directly, same as the mcp-server.
+and use the hub to reach either app.

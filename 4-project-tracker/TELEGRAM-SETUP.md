@@ -6,12 +6,11 @@ the mobile app and Claude Code's `add_task` MCP tool.
 
 ## Live setup (Make.com)
 
-- Scenario: **TODO Bot Automation** (id `9515018`, team `2918420`), active.
+- Scenario: **TODO Bot Automation** (see Make.com dashboard for id/team), active.
 - Modules: `telegram:WatchUpdates` → `google-sheets:addRow` (plus dedupe via
   a Make Data Store keyed on `chat.id`).
-- Trigger: webhook named **"My Telegram Bot Updates webhook"** (hook id
-  `4254530`, type `telegramapi`), bound to a Telegram bot via Make's
-  Telegram connection (connection id `14423561`).
+- Trigger: Telegram webhook (type `telegramapi`), bound to a Telegram bot via
+  Make's Telegram connection (see Make.com dashboard for hook/connection id).
 - Target sheet: same one `mcp-server` and the frontend use — see
   `frontend/README.md` / the sheet ID referenced there.
 - Local copy of the scenario blueprint (exported, no secrets): see
@@ -37,6 +36,6 @@ the mobile app and Claude Code's `add_task` MCP tool.
 
 - No bot token, webhook URL, or connection credentials are stored in this
   repo — all of that lives in Make.com's own secret store.
-- If the scenario needs debugging, check it directly in Make.com (scenario
-  id above) rather than re-deriving state from the blueprint file, which is
-  a point-in-time export and may drift from the live scenario.
+- If the scenario needs debugging, check it directly in Make.com rather than
+  re-deriving state from the blueprint file, which is a point-in-time export
+  and may drift from the live scenario.

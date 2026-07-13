@@ -9,38 +9,41 @@ for the full data-flow rationale.
 
 ```
 4-project-tracker/
-├── frontend/            Next.js todo UI (source of truth for the /todo route
-│                         hosted in ../web — see below)
+├── frontend/            Next.js todo UI, own standalone Vercel deployment,
+│                         password-gated (see below)
 ├── mcp-server/           Local MCP stdio server for Claude Code/Desktop
 ├── ARCHITECTURE.md        Sheet schema, source-of-truth rationale
 └── TELEGRAM-SETUP.md     Make.com scenario + Telegram bot setup
 ```
 
-## Where it's actually deployed
+## Where it's deployed
 
-`frontend/` is the original standalone Next.js app and stays here as the
-source of truth for that UI, but the **live deployment is `../web`'s
-`/todo` route** — the same passcode-gated host that serves apps 1 and 2
-(`../web/app/todo`, `../web/app/api/todos`). This keeps the todo sheet
-behind the same auth as everything else instead of shipping a second,
-unauthenticated public URL. If you change UI behavior, mirror the change
-in both `frontend/app` and `web/app/todo` (or promote one to be a shared
-package if the duplication gets painful — not worth it yet at this size).
+`frontend/` is its own standalone Next.js app, deployed to its own Vercel
+project — separate from `../web` (which hosts apps 1 and 2). It ships with
+the same shared-passcode session-cookie auth pattern as `../web`
+(`lib/session.ts`, `lib/rate-limit.ts`, `middleware.ts`, `/login`,
+`/api/session`), ported in rather than shared, so a compromise of one app's
+passcode doesn't affect the other and each can be deployed/rotated
+independently. `POST /api/session` is rate-limited (5 attempts/min/IP) to
+blunt passcode brute-forcing.
 
 ## Components
 
-### 1. `frontend/` — Next.js UI
+### 1. `frontend/` — Next.js UI (password-protected)
 Talks to `app/api/todos/route.ts`, which calls Google Sheets directly via
 a service-account JWT (`app/services/sheets-service.ts`). No backend
-process of its own.
+process of its own. `/`, `/api/todos` sit behind the passcode cookie;
+`/login` and `/api/session` are the only unauthenticated routes.
 
 ```bash
 cd frontend && npm install && npm run dev
 ```
 
-Requires `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`,
-`GOOGLE_SHEETS_SHEET_NAME` (see `../web/README.md`'s env var table for the
-values — same account is reused).
+Requires `SITE_PASSCODE`, `SESSION_SECRET` (auth) and
+`GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`,
+`GOOGLE_SHEETS_SHEET_NAME` (Sheets access) as env vars — see
+`frontend/.env.local.example` if present, or the vars documented inline in
+`lib/session.ts` / `app/services/sheets-service.ts`.
 
 ### 2. `mcp-server/` — Claude Code / Claude Desktop tool
 Stdio MCP server exposing `list_open_tasks`, `add_task`, `mark_task_done`,
@@ -63,7 +66,7 @@ are in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Adding a task, three ways
 
-- **Web**: open `/todo` on the hosted site.
+- **Web**: open the standalone deployed app, enter the passcode.
 - **Claude Code**: `add_task` via the `project-tracker` MCP server.
 - **Telegram**: message the bot directly.
 

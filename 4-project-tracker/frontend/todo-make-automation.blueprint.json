@@ -6,7 +6,7 @@
             "module": "telegram:WatchUpdates",
             "version": 1,
             "parameters": {
-                "__IMTHOOK__": 4254530
+                "__IMTHOOK__": 0
             },
             "mapper": {},
             "metadata": {
@@ -111,7 +111,7 @@
                                 "3": "telegram",
                                 "4": "{{now}}",
                                 "sheetId": "Todos",
-                                "spreadsheetId": "1U-r0YqCZ2oXnExBnwdVUtEfVx7fgG8oSLaEG79dN23U",
+                                "spreadsheetId": "REDACTED_SPREADSHEET_ID",
                                 "tableFirstRow": "A1:Z1",
                                 "insertDataOption": "INSERT_ROWS",
                                 "valueInputOption": "USER_ENTERED",
@@ -271,7 +271,7 @@
                                                 "3": "telegram",
                                                 "4": "{{now}}",
                                                 "sheetId": "Todos",
-                                                "spreadsheetId": "1U-r0YqCZ2oXnExBnwdVUtEfVx7fgG8oSLaEG79dN23U",
+                                                "spreadsheetId": "REDACTED_SPREADSHEET_ID",
                                                 "tableFirstRow": "A1:Z1",
                                                 "insertDataOption": "INSERT_ROWS",
                                                 "valueInputOption": "USER_ENTERED",
