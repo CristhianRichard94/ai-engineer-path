@@ -160,13 +160,13 @@ class SheetsService {
         const spreadsheetId = this.extractSpreadsheetId(source);
         const rowNumber = await this.findRowNumber(spreadsheetId, id);
 
-        const columnMap: Record<string, string> = {
+        const columnMap: Record<string, string> = Object.assign(Object.create(null), {
             description: "B",
             status: "C",
             source: "D",
             doneDate: "F",
             priority: "G",
-        };
+        });
 
         const data: { range: string; values: string[][] }[] = [];
 
