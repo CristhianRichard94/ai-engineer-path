@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { AIMessage } from "../types";
-import { LLMService, UnauthorizedError } from "../service";
+import { ApiError, LLMService, UnauthorizedError } from "../service";
 const INITIAL_MESSAGE: AIMessage = {
   role: "assistant",
   content: "Welcome to the chat! Ask me anything.",
@@ -48,6 +48,14 @@ function ChatComponent({ onUnauthorized }: ChatComponentProps) {
           onUnauthorized?.();
           return;
         }
+        const message =
+          err instanceof ApiError
+            ? err.message
+            : "Something went wrong sending your message. Please try again.";
+        setConversation((prev) => [
+          ...prev,
+          { role: "assistant", content: message },
+        ]);
         console.error("Error sending message:", err);
       })
       .finally(() => {

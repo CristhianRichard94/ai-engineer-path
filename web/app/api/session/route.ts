@@ -5,32 +5,39 @@ import {
   createSessionValue,
   passcodeMatches,
 } from "../../../lib/session";
-import { checkRateLimit, ensureSweepScheduled } from "../../../lib/rate-limit";
+import {
+  checkLoginLockout,
+  ensureSweepScheduled,
+  getClientIp,
+  isSharedClientKey,
+  recordLoginFailure,
+  recordLoginSuccess,
+} from "../../../lib/rate-limit";
 
 // Runs in the Node.js runtime (default for route handlers) so it shares the
-// same in-memory rate-limit bucket as any other Node-runtime code in this
-// process. See lib/rate-limit.ts for the single-instance caveat.
-
-const RATE_LIMIT_MAX_ATTEMPTS = 5;
-const RATE_LIMIT_WINDOW_MS = 60 * 1000;
-
-function getClientIp(request: NextRequest): string {
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  if (forwardedFor) return forwardedFor.split(",")[0].trim();
-  const realIp = request.headers.get("x-real-ip");
-  if (realIp) return realIp;
-  return "unknown";
-}
+// same in-memory rate-limit state as any other Node-runtime code in this
+// process. See lib/rate-limit.ts for the single-instance caveat and the
+// escalating-lockout parameters (free attempts, backoff growth, cap, and the
+// separate low cap applied when the resolved client key is shared/ambiguous
+// rather than scoped to one visitor).
 
 export async function POST(request: NextRequest) {
-  ensureSweepScheduled(RATE_LIMIT_WINDOW_MS);
+  ensureSweepScheduled();
 
   const ip = getClientIp(request);
-  const rateLimit = checkRateLimit(ip, RATE_LIMIT_MAX_ATTEMPTS, RATE_LIMIT_WINDOW_MS);
-  if (!rateLimit.allowed) {
+  const loginKey = `login:${ip}`;
+  // Without TRUST_PROXY_HEADERS, `ip` is a sentinel shared by every visitor
+  // — the lockout must not be allowed to escalate to the full 24h cap in
+  // that case, or one anonymous, unauthenticated caller could lock every
+  // visitor (owner included) out of login for a day, repeatably. See
+  // lib/rate-limit.ts's recordLoginFailure for the cap this feeds into.
+  const sharedKey = isSharedClientKey(ip);
+
+  const lockout = checkLoginLockout(loginKey);
+  if (!lockout.allowed) {
     return NextResponse.json(
-      { error: "Too many attempts. Try again in a moment." },
-      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
+      { error: "Too many attempts. Try again later." },
+      { status: 429, headers: { "Retry-After": String(lockout.retryAfterSeconds) } }
     );
   }
 
@@ -64,9 +71,11 @@ export async function POST(request: NextRequest) {
 
   const isValid = await passcodeMatches(passcode.trim(), sitePasscode);
   if (!isValid) {
+    recordLoginFailure(loginKey, sharedKey);
     return NextResponse.json({ error: "Incorrect passcode." }, { status: 401 });
   }
 
+  recordLoginSuccess(loginKey);
   const sessionValue = await createSessionValue(sessionSecret);
   const response = NextResponse.json({ ok: true });
   response.cookies.set(SESSION_COOKIE_NAME, sessionValue, {
