@@ -1,0 +1,335 @@
+{
+    "name": "TODO Bot Automation",
+    "flow": [
+        {
+            "id": 2,
+            "module": "telegram:WatchUpdates",
+            "version": 1,
+            "parameters": {
+                "__IMTHOOK__": 4254530
+            },
+            "mapper": {},
+            "metadata": {
+                "designer": {
+                    "x": 0,
+                    "y": 0,
+                    "name": "Telegram trigger"
+                },
+                "restore": {
+                    "parameters": {
+                        "__IMTHOOK__": {
+                            "label": "My Telegram Bot Updates webhook",
+                            "data": {
+                                "editable": "false"
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "__IMTHOOK__",
+                        "type": "hook:telegramapi",
+                        "label": "Webhook",
+                        "required": true
+                    }
+                ]
+            }
+        },
+        {
+            "id": 3,
+            "module": "datastore:ExistRecord",
+            "version": 1,
+            "parameters": {
+                "datastore": 171398
+            },
+            "mapper": {
+                "key": "{{2.message.chat.id}}",
+                "datastore": "171398"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 300,
+                    "y": 0
+                }
+            }
+        },
+        {
+            "id": 4,
+            "module": "builtin:BasicRouter",
+            "version": 1,
+            "mapper": null,
+            "metadata": {
+                "designer": {
+                    "x": 600,
+                    "y": 0
+                }
+            },
+            "routes": [
+                {
+                    "flow": [
+                        {
+                            "id": 5,
+                            "module": "datastore:GetRecord",
+                            "version": 1,
+                            "parameters": {
+                                "datastore": 171398
+                            },
+                            "filter": {
+                                "name": "pending exists",
+                                "conditions": [
+                                    [
+                                        {
+                                            "a": "{{3.existing}}",
+                                            "b": "true",
+                                            "o": "text:equal"
+                                        }
+                                    ]
+                                ]
+                            },
+                            "mapper": {
+                                "key": "{{2.message.chat.id}}",
+                                "datastore": "171398"
+                            },
+                            "metadata": {
+                                "designer": {
+                                    "x": 900,
+                                    "y": -150
+                                }
+                            }
+                        },
+                        {
+                            "id": 6,
+                            "module": "google-sheets:addRow",
+                            "version": 2,
+                            "parameters": {
+                                "__IMTCONN__": 14423562
+                            },
+                            "mapper": {
+                                "0": " id-{{formatDate(now; \"YYYYMMDDHHmmss\")}}",
+                                "1": "{{5.data.content}}\n{{2.message.text}}",
+                                "2": "todo",
+                                "3": "telegram",
+                                "4": "{{now}}",
+                                "sheetId": "Todos",
+                                "spreadsheetId": "1U-r0YqCZ2oXnExBnwdVUtEfVx7fgG8oSLaEG79dN23U",
+                                "tableFirstRow": "A1:Z1",
+                                "insertDataOption": "INSERT_ROWS",
+                                "valueInputOption": "USER_ENTERED",
+                                "insertUnformatted": true
+                            },
+                            "metadata": {
+                                "designer": {
+                                    "x": 1200,
+                                    "y": -150
+                                }
+                            }
+                        },
+                        {
+                            "id": 7,
+                            "module": "datastore:DeleteRecord",
+                            "version": 1,
+                            "parameters": {
+                                "datastore": 171398
+                            },
+                            "mapper": {
+                                "key": "{{2.message.chat.id}}",
+                                "datastore": "171398"
+                            },
+                            "metadata": {
+                                "designer": {
+                                    "x": 1500,
+                                    "y": -150
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "flow": [
+                        {
+                            "id": 8,
+                            "module": "datastore:AddRecord",
+                            "version": 1,
+                            "parameters": {
+                                "datastore": 171398
+                            },
+                            "filter": {
+                                "name": "no pending",
+                                "conditions": [
+                                    [
+                                        {
+                                            "a": "{{3.existing}}",
+                                            "b": "true",
+                                            "o": "text:notequal"
+                                        }
+                                    ]
+                                ]
+                            },
+                            "mapper": {
+                                "key": "{{2.message.chat.id}}",
+                                "data": {
+                                    "content": "{{2.message.text}}",
+                                    "created": "{{now}}"
+                                },
+                                "datastore": "171398"
+                            },
+                            "metadata": {
+                                "designer": {
+                                    "x": 900,
+                                    "y": 150
+                                }
+                            }
+                        },
+                        {
+                            "id": 9,
+                            "module": "util:FunctionSleep",
+                            "version": 1,
+                            "parameters": {},
+                            "mapper": {
+                                "delay": "5"
+                            },
+                            "metadata": {
+                                "designer": {
+                                    "x": 1200,
+                                    "y": 150
+                                }
+                            }
+                        },
+                        {
+                            "id": 10,
+                            "module": "datastore:ExistRecord",
+                            "version": 1,
+                            "parameters": {
+                                "datastore": 171398
+                            },
+                            "mapper": {
+                                "key": "{{2.message.chat.id}}",
+                                "datastore": "171398"
+                            },
+                            "metadata": {
+                                "designer": {
+                                    "x": 1500,
+                                    "y": 150
+                                }
+                            }
+                        },
+                        {
+                            "id": 11,
+                            "module": "builtin:BasicRouter",
+                            "version": 1,
+                            "mapper": null,
+                            "metadata": {
+                                "designer": {
+                                    "x": 1800,
+                                    "y": 150
+                                }
+                            },
+                            "routes": [
+                                {
+                                    "flow": [
+                                        {
+                                            "id": 12,
+                                            "module": "datastore:GetRecord",
+                                            "version": 1,
+                                            "parameters": {
+                                                "datastore": 171398
+                                            },
+                                            "filter": {
+                                                "name": "still pending, no partner arrived",
+                                                "conditions": [
+                                                    [
+                                                        {
+                                                            "a": "{{10.existing}}",
+                                                            "b": "true",
+                                                            "o": "text:equal"
+                                                        }
+                                                    ]
+                                                ]
+                                            },
+                                            "mapper": {
+                                                "key": "{{2.message.chat.id}}",
+                                                "datastore": "171398"
+                                            },
+                                            "metadata": {
+                                                "designer": {
+                                                    "x": 2100,
+                                                    "y": 100
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "id": 13,
+                                            "module": "google-sheets:addRow",
+                                            "version": 2,
+                                            "parameters": {
+                                                "__IMTCONN__": 14423562
+                                            },
+                                            "mapper": {
+                                                "0": " id-{{formatDate(now; \"YYYYMMDDHHmmss\")}}",
+                                                "1": "{{12.data.content}}",
+                                                "2": "todo",
+                                                "3": "telegram",
+                                                "4": "{{now}}",
+                                                "sheetId": "Todos",
+                                                "spreadsheetId": "1U-r0YqCZ2oXnExBnwdVUtEfVx7fgG8oSLaEG79dN23U",
+                                                "tableFirstRow": "A1:Z1",
+                                                "insertDataOption": "INSERT_ROWS",
+                                                "valueInputOption": "USER_ENTERED",
+                                                "insertUnformatted": true
+                                            },
+                                            "metadata": {
+                                                "designer": {
+                                                    "x": 2400,
+                                                    "y": 100
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "id": 14,
+                                            "module": "datastore:DeleteRecord",
+                                            "version": 1,
+                                            "parameters": {
+                                                "datastore": 171398
+                                            },
+                                            "mapper": {
+                                                "key": "{{2.message.chat.id}}",
+                                                "datastore": "171398"
+                                            },
+                                            "metadata": {
+                                                "designer": {
+                                                    "x": 2700,
+                                                    "y": 100
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "metadata": {
+        "instant": true,
+        "version": 1,
+        "scenario": {
+            "roundtrips": 1,
+            "maxErrors": 3,
+            "autoCommit": true,
+            "autoCommitTriggerLast": true,
+            "sequential": true,
+            "slots": null,
+            "confidential": false,
+            "dataloss": false,
+            "dlq": false,
+            "freshVariables": false
+        },
+        "designer": {
+            "orphans": []
+        },
+        "zone": "eu2.make.com",
+        "notes": []
+    }
+}
