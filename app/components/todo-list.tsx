@@ -139,6 +139,9 @@ export default function TodoList({ source }: { source: string }) {
       const rankA = STATUS_RANK[a.status] ?? Number.MAX_SAFE_INTEGER;
       const rankB = STATUS_RANK[b.status] ?? Number.MAX_SAFE_INTEGER;
       if (rankA !== rankB) return rankA - rankB;
+      const priorityA = a.priority ?? Number.MAX_SAFE_INTEGER;
+      const priorityB = b.priority ?? Number.MAX_SAFE_INTEGER;
+      if (priorityA !== priorityB) return priorityA - priorityB;
       return getCreatedTime(a) - getCreatedTime(b);
     });
   }, [todos]);

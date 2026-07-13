@@ -5,6 +5,17 @@ import { getISOString, getShortDateString } from "../utils/date";
 
 const STATUS_OPTIONS = Object.values(TodoStatus);
 
+const PRIORITY_OPTIONS = ["", "1", "2", "3", "4", "5"];
+
+const PRIORITY_CLASSES: Record<string, string> = {
+    "1": "text-red-700 bg-red-50 border-red-300 dark:text-red-300 dark:bg-red-900/50 dark:border-red-600/70",
+    "2": "text-orange-700 bg-orange-50 border-orange-300 dark:text-orange-300 dark:bg-orange-900/50 dark:border-orange-600/70",
+    "3": "text-amber-700 bg-amber-50 border-amber-300 dark:text-amber-300 dark:bg-amber-900/50 dark:border-amber-600/70",
+    "4": "text-blue-700 bg-blue-50 border-blue-300 dark:text-blue-300 dark:bg-blue-900/50 dark:border-blue-600/70",
+    "5": "text-gray-700 bg-gray-100 border-gray-300 dark:text-gray-300 dark:bg-gray-700/70 dark:border-gray-500",
+    "": "text-gray-400 bg-transparent border-gray-300 border-dashed dark:text-gray-500 dark:border-gray-600",
+};
+
 const STATUS_CLASSES: Record<string, string> = {
     [TodoStatus.InProgress]:
         "text-amber-700 bg-amber-50 border-amber-300 dark:text-amber-300 dark:bg-amber-900/50 dark:border-amber-600/70",
@@ -72,6 +83,13 @@ export default function TodoItem({ todo, source, onChange, onSavingChange }: Tod
     const [showStatusSpinner, setShowStatusSpinner] = useState(false);
     const statusTokenRef = useRef(0);
 
+    const [priority, setPriority] = useState<string>(todo.priority ? String(todo.priority) : "");
+    const [prioritySaving, setPrioritySaving] = useState(false);
+    const [priorityResortPending, setPriorityResortPending] = useState(false);
+    const [priorityError, setPriorityError] = useState<string | null>(null);
+    const [showPrioritySpinner, setShowPrioritySpinner] = useState(false);
+    const priorityTokenRef = useRef(0);
+
     const [description, setDescription] = useState(todo.description);
     const [isEditingDescription, setIsEditingDescription] = useState(false);
     const [descriptionDraft, setDescriptionDraft] = useState(todo.description);
@@ -84,33 +102,47 @@ export default function TodoItem({ todo, source, onChange, onSavingChange }: Tod
 
     const statusAbortRef = useRef<AbortController | null>(null);
     const descriptionAbortRef = useRef<AbortController | null>(null);
+    const priorityAbortRef = useRef<AbortController | null>(null);
     const statusSpinnerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const descriptionSpinnerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const prioritySpinnerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const resortTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const priorityResortTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
         return () => {
             statusAbortRef.current?.abort();
             descriptionAbortRef.current?.abort();
+            priorityAbortRef.current?.abort();
             if (statusSpinnerTimeoutRef.current) clearTimeout(statusSpinnerTimeoutRef.current);
             if (descriptionSpinnerTimeoutRef.current) clearTimeout(descriptionSpinnerTimeoutRef.current);
+            if (prioritySpinnerTimeoutRef.current) clearTimeout(prioritySpinnerTimeoutRef.current);
             if (resortTimeoutRef.current) clearTimeout(resortTimeoutRef.current);
+            if (priorityResortTimeoutRef.current) clearTimeout(priorityResortTimeoutRef.current);
             onSavingChange?.(todo.id, false);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Report combined "busy" state (status saving, pending resort, or description saving)
-    // to the parent so poll merges can avoid clobbering local optimistic state.
+    // Report combined "busy" state (status saving, pending resort, description saving,
+    // or priority saving/resort) to the parent so poll merges can avoid clobbering
+    // local optimistic state.
     useEffect(() => {
-        onSavingChange?.(todo.id, statusSaving || resortPending || descriptionSaving);
+        onSavingChange?.(
+            todo.id,
+            statusSaving || resortPending || descriptionSaving || prioritySaving || priorityResortPending
+        );
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [statusSaving, resortPending, descriptionSaving, todo.id]);
+    }, [statusSaving, resortPending, descriptionSaving, prioritySaving, priorityResortPending, todo.id]);
 
     useEffect(() => {
         setStatus(todo.status);
         setDoneDate(todo.doneDate);
     }, [todo.status, todo.doneDate]);
+
+    useEffect(() => {
+        setPriority(todo.priority ? String(todo.priority) : "");
+    }, [todo.priority]);
 
     useEffect(() => {
         setDescription(todo.description);
@@ -193,6 +225,67 @@ export default function TodoItem({ todo, source, onChange, onSavingChange }: Tod
             setStatusError("Failed to update status.");
             setStatusSaving(false);
             setShowStatusSpinner(false);
+        }
+    };
+
+    const handlePriorityChange = async (event: React.ChangeEvent<HTMLSelectElement>) => {
+        const newPriority = event.target.value;
+        if (newPriority === priority) return;
+
+        const previousPriority = priority;
+        const updates: Record<string, unknown> = { priority: newPriority ? parseInt(newPriority, 10) : null };
+
+        // Register the busy flag synchronously, before any async work starts,
+        // so a poll can never land in the gap between the optimistic update
+        // and the effect-based registration (which runs after render commit).
+        onSavingChange?.(todo.id, true);
+
+        setPriority(newPriority);
+        setPriorityError(null);
+        setPrioritySaving(true);
+
+        priorityAbortRef.current?.abort();
+        const controller = new AbortController();
+        priorityAbortRef.current = controller;
+
+        const token = ++priorityTokenRef.current;
+        if (prioritySpinnerTimeoutRef.current) clearTimeout(prioritySpinnerTimeoutRef.current);
+        const spinnerTimeout = setTimeout(() => {
+            if (priorityTokenRef.current === token) setShowPrioritySpinner(true);
+        }, 300);
+        prioritySpinnerTimeoutRef.current = spinnerTimeout;
+
+        try {
+            await patchTodo(source, todo.id, updates, controller.signal);
+            if (priorityTokenRef.current !== token) return;
+            clearTimeout(spinnerTimeout);
+            setShowPrioritySpinner(false);
+            setPrioritySaving(false);
+            if (priorityResortTimeoutRef.current) clearTimeout(priorityResortTimeoutRef.current);
+            setPriorityResortPending(true);
+            priorityResortTimeoutRef.current = setTimeout(() => {
+                if (priorityTokenRef.current !== token) {
+                    setPriorityResortPending(false);
+                    return;
+                }
+                onChange((prev) =>
+                    prev.map((t) =>
+                        t.id === todo.id
+                            ? { ...t, priority: newPriority ? parseInt(newPriority, 10) : undefined }
+                            : t
+                    )
+                );
+                setPriorityResortPending(false);
+            }, 600);
+        } catch (error) {
+            if (error instanceof AbortedPatchError) return;
+            if (priorityTokenRef.current !== token) return;
+            clearTimeout(spinnerTimeout);
+            console.error(error);
+            setPriority(previousPriority);
+            setPriorityError("Failed to update priority.");
+            setPrioritySaving(false);
+            setShowPrioritySpinner(false);
         }
     };
 
@@ -318,6 +411,37 @@ export default function TodoItem({ todo, source, onChange, onSavingChange }: Tod
                 <div className="flex flex-col shrink-0">
                     <div className="relative inline-block">
                         <select
+                            value={priority}
+                            disabled={prioritySaving}
+                            onChange={handlePriorityChange}
+                            aria-label="Priority"
+                            className={`${BASE_SELECT_CLASSES} !min-w-[64px] ${priorityError ? "border-red-500 dark:border-red-500" : (PRIORITY_CLASSES[priority] ?? PRIORITY_CLASSES[""])}`}
+                        >
+                            {PRIORITY_OPTIONS.map((option) => (
+                                <option
+                                    key={option || "unset"}
+                                    value={option}
+                                    className="bg-[#1f2937] text-white"
+                                >
+                                    {option ? `P${option}` : "–"}
+                                </option>
+                            ))}
+                        </select>
+                        <svg
+                            aria-hidden="true"
+                            viewBox="0 0 20 20"
+                            fill="none"
+                            className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-current opacity-70"
+                        >
+                            <path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                    </div>
+                    {showPrioritySpinner && <span className={SPINNER_CLASSES} aria-hidden />}
+                </div>
+
+                <div className="flex flex-col shrink-0">
+                    <div className="relative inline-block">
+                        <select
                             value={status}
                             disabled={statusSaving}
                             onChange={handleStatusChange}
@@ -364,6 +488,11 @@ export default function TodoItem({ todo, source, onChange, onSavingChange }: Tod
                 </div>
             </div>
 
+            {priorityError && (
+                <p className="text-xs text-red-600 dark:text-red-400 mt-0.5" role="alert">
+                    {priorityError}
+                </p>
+            )}
             {statusError && (
                 <p className="text-xs text-red-600 dark:text-red-400 mt-0.5" role="alert">
                     {statusError}

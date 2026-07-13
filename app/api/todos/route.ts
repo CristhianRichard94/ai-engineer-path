@@ -49,6 +49,14 @@ export async function PATCH(request: NextRequest) {
     if (!source || !id || !updates) {
         return NextResponse.json({ error: "Missing source, id or updates" }, { status: 400 });
     }
+    if (
+        Object.prototype.hasOwnProperty.call(updates, "priority") &&
+        updates.priority !== null &&
+        updates.priority !== undefined &&
+        (!Number.isInteger(updates.priority) || updates.priority < 1 || updates.priority > 5)
+    ) {
+        return NextResponse.json({ error: "Priority must be null or an integer between 1 and 5" }, { status: 400 });
+    }
     const updated = await sheetsService.updateTodo(source, id, updates);
     return NextResponse.json({ todo: updated });
 }

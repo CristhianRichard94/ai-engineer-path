@@ -5,6 +5,7 @@ export type Todo = {
     status: TodoStatus;
     doneDate?: Date | string;
     created: Date | string;
+    priority?: number;
 };
 
 
