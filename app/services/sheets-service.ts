@@ -75,8 +75,9 @@ class SheetsService {
     }
 
     private rowToTodo(row: string[]): Todo {
-        const [id, description, status, source, created, doneDate] = row;
+        const [id, description, status, source, created, doneDate, priority] = row;
         const createdDate = new Date(created);
+        const parsedPriority = priority ? parseInt(priority, 10) : NaN;
         return {
             id,
             description,
@@ -84,6 +85,7 @@ class SheetsService {
             status: ((status === "pending" ? "todo" : status) || "todo") as TodoStatus,
             doneDate: doneDate ? new Date(doneDate) : undefined,
             created: isNaN(createdDate.getTime()) ? new Date(0) : createdDate,
+            priority: isNaN(parsedPriority) ? undefined : parsedPriority,
         };
     }
 
@@ -106,6 +108,7 @@ class SheetsService {
             this.sanitizeForSheet(todo.source),
             this.sanitizeForSheet(this.toISOString(todo.created)),
             todo.doneDate ? this.sanitizeForSheet(this.toISOString(todo.doneDate)) : "",
+            todo.priority !== undefined && todo.priority !== null ? String(todo.priority) : "",
         ];
     }
 
@@ -130,7 +133,7 @@ class SheetsService {
 
     async getTodos(source: string): Promise<Todo[]> {
         const spreadsheetId = this.extractSpreadsheetId(source);
-        const data = await this.request(spreadsheetId, `/values/${SHEET_NAME}!A2:F`);
+        const data = await this.request(spreadsheetId, `/values/${SHEET_NAME}!A2:G`);
         const rows: string[][] = data.values || [];
         return rows.filter((row) => row[0]).map((row) => this.rowToTodo(row));
     }
@@ -138,7 +141,7 @@ class SheetsService {
     async addTodo(source: string, todo: Omit<Todo, "created"> & { created?: Date }): Promise<Todo> {
         const spreadsheetId = this.extractSpreadsheetId(source);
         const newTodo: Todo = { ...todo, created: todo.created || new Date() };
-        await this.request(spreadsheetId, `/values/${SHEET_NAME}!A:F:append?valueInputOption=RAW`, {
+        await this.request(spreadsheetId, `/values/${SHEET_NAME}!A:G:append?valueInputOption=RAW`, {
             method: "POST",
             body: JSON.stringify({ values: [this.todoToRow(newTodo)] }),
         });
@@ -148,7 +151,7 @@ class SheetsService {
     async updateTodo(
         source: string,
         id: string,
-        updates: Partial<Omit<Todo, "id">> & { doneDate?: Date | string | null }
+        updates: Partial<Omit<Todo, "id">> & { doneDate?: Date | string | null; priority?: number | null }
     ): Promise<Todo> {
         const spreadsheetId = this.extractSpreadsheetId(source);
         const todos = await this.getTodos(source);
@@ -160,9 +163,10 @@ class SheetsService {
             ...existing,
             ...updates,
             doneDate: updates.doneDate === null ? undefined : (updates.doneDate ?? existing.doneDate),
+            priority: updates.priority === null ? undefined : (updates.priority ?? existing.priority),
         };
         const rowNumber = await this.findRowNumber(spreadsheetId, id);
-        await this.request(spreadsheetId, `/values/${SHEET_NAME}!A${rowNumber}:F${rowNumber}?valueInputOption=RAW`, {
+        await this.request(spreadsheetId, `/values/${SHEET_NAME}!A${rowNumber}:G${rowNumber}?valueInputOption=RAW`, {
             method: "PUT",
             body: JSON.stringify({ values: [this.todoToRow(updated)] }),
         });
