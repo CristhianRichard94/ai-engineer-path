@@ -378,7 +378,7 @@ export default function TodoItem({ todo, source, onChange, onSavingChange }: Tod
     const doneDateShort = doneDate ? getShortDateString(doneDate) : null;
 
     return (
-        <div className={`todo ${status} group flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3 w-full max-w-3xl px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md ${STATUS_CARD_BG[status]} hover:border-gray-400 dark:hover:border-gray-600 transition-colors`}>
+        <div className={`todo ${status} group flex flex-col gap-1.5 w-full max-w-3xl px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md ${STATUS_CARD_BG[status]} hover:border-gray-400 dark:hover:border-gray-600 transition-colors`}>
             {isEditingDescription ? (
                 <input
                     ref={descriptionInputRef}
@@ -407,7 +407,7 @@ export default function TodoItem({ todo, source, onChange, onSavingChange }: Tod
                 </div>
             )}
 
-            <div className="flex flex-row items-center justify-between gap-2 w-full sm:w-auto sm:contents">
+            <div className="flex flex-row items-center justify-between gap-2 w-full">
                 <div className="flex flex-col shrink-0">
                     <div className="relative inline-block">
                         <select

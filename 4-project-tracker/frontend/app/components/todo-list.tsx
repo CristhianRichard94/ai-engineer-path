@@ -125,6 +125,18 @@ export default function TodoList({ source }: { source: string }) {
     };
   }, [source]);
 
+  // Animate reorders (e.g. completing a todo slides it to the bottom) using
+  // the native View Transitions API. No-op fallback in browsers without it.
+  const animatedSetTodos: typeof setTodos = (updater) => {
+    if (typeof document !== "undefined" && "startViewTransition" in document) {
+      (document as unknown as { startViewTransition: (cb: () => void) => void }).startViewTransition(() =>
+        setTodos(updater)
+      );
+    } else {
+      setTodos(updater);
+    }
+  };
+
   const handleCreated = (todo: Todo) => {
     pendingNewIdsRef.current.add(todo.id);
     setTodos((prev) => [...prev, todo]);
@@ -164,8 +176,8 @@ export default function TodoList({ source }: { source: string }) {
           )}
           <ul className="flex flex-col gap-2 w-full flex-1 min-h-0 overflow-y-auto pr-1 pb-16">
             {sortedTodos.map((todo) => (
-              <li key={todo.id} className="w-full">
-                <TodoItem todo={todo} source={source} onChange={setTodos} onSavingChange={handleSavingChange} />
+              <li key={todo.id} className="w-full" style={{ viewTransitionName: `todo-${todo.id}` }}>
+                <TodoItem todo={todo} source={source} onChange={animatedSetTodos} onSavingChange={handleSavingChange} />
               </li>
             ))}
           </ul>
