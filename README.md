@@ -15,8 +15,8 @@ This project is part of the **AI Engineer Path** learning initiative, showcasing
 | 1 | **AI Chat** | Real-time chat interface backed by an OpenAI LLM. Streaming responses, conversation history, React + FastAPI. | [1-ai-chat/README.md](1-ai-chat/README.md) |
 | 2 | **Context-Aware Doc Bot** | Paste a GitHub repo URL → async indexing (Celery + Qdrant) → ask questions about the codebase via RAG. Flask + Next.js. | [2-context-aware-doc-bot/README.md](2-context-aware-doc-bot/README.md) |
 | 3 | **JARVIS — AI Local Voice Assistant** | Wake-word-activated voice assistant for Windows. Speech-to-text → GPT intent routing → TTS (Fish Speech / pyttsx3). | [3-ai-local-assistant/README.md](3-ai-local-assistant/README.md) |
-| 4 | **Web (recruiter-safe host)** | Next.js app that hosts apps 1 and 2 behind a shared passcode gate for public deployment — the actual live entry point for this repo. | [web/README.md](web/README.md) |
-| 5 | **Todo System** | Google-Sheet-backed todo system: Next.js frontend, MCP stdio server (`add_task`, `list_open_tasks`, `mark_task_done`, `edit_task`, `delete_task`, `git_status_summary`), and a Telegram→Sheet capture path via Make.com. | [5-todo-app/ARCHITECTURE.md](5-todo-app/ARCHITECTURE.md) |
+| 4 | **Project Tracker (Todo System)** | Google-Sheet-backed todo system: Next.js frontend, MCP stdio server (`add_task`, `list_open_tasks`, `mark_task_done`, `edit_task`, `delete_task`, `git_status_summary`), and a Telegram→Sheet capture path via Make.com. | [4-project-tracker/README.md](4-project-tracker/README.md) |
+| 5 | **Web (recruiter-safe host)** | Next.js app that hosts apps 1 and 2 behind a shared passcode gate for public deployment — the actual live entry point for this repo. | [web/README.md](web/README.md) |
 
 ---
 
@@ -35,7 +35,7 @@ Navigate to any application directory and follow the instructions in its README 
 
 ## 🔌 MCP Servers
 
-This repo ships its own MCP server as part of [app 5](5-todo-app/mcp-server) — **project-tracker**, a stdio server exposing `list_open_tasks`, `add_task`, `mark_task_done`, `edit_task`, `delete_task`, and `git_status_summary` over the Todos Google Sheet (see [5-todo-app/ARCHITECTURE.md](5-todo-app/ARCHITECTURE.md)). Wired up via the project-scoped `.mcp.json`. Claude Code auto-detects it; approve the trust prompt on first use.
+This repo ships its own MCP server as part of [app 4](4-project-tracker/mcp-server) — **project-tracker**, a stdio server exposing `list_open_tasks`, `add_task`, `mark_task_done`, `edit_task`, `delete_task`, and `git_status_summary` over the Todos Google Sheet (see [4-project-tracker/README.md](4-project-tracker/README.md)). Wired up via the project-scoped `.mcp.json`. Claude Code auto-detects it; approve the trust prompt on first use.
 
 ---
 
