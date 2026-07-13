@@ -3,7 +3,7 @@
     "project-tracker": {
       "type": "stdio",
       "command": "node",
-      "args": ["4-project-tracker/src/index.js"]
+      "args": ["5-todo-app/mcp-server/src/index.js"]
     }
   }
 }
