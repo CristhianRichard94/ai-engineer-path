@@ -24,6 +24,15 @@ export default function HubPage() {
               Ask questions about a GitHub repo →
             </p>
           </Link>
+          <Link
+            href="/todo"
+            className="block rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <h2 className="font-semibold mb-1">Todo</h2>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              Manage tasks synced to the shared sheet →
+            </p>
+          </Link>
         </div>
       </div>
     </div>

@@ -10,10 +10,14 @@ using the stdio transport.
 
 - **`list_open_tasks`** — reads the Todos sheet and returns rows with status
   `idea` or `in_progress` (skips `done`).
+- **`add_task`** — appends a new row with status `idea` (optional `source`,
+  optional `priority` 1–5).
+- **`edit_task`** — finds a task by exact text or partial match and updates
+  its description and/or priority.
 - **`mark_task_done`** — takes a task description or partial match string,
   sets that row's `status` to `done` and stamps `done_date` with today's date.
-- **`add_task`** — appends a new row with status `idea` (`source` defaults to
-  `"manual"`, or pass e.g. `"reel:<link>"`).
+- **`delete_task`** — finds a task by exact text or partial match and
+  deletes the row entirely.
 - **`git_status_summary`** — given a project folder name (a subfolder of the
   projects root), runs `git status --short` in that folder and returns the
   output, or a clear message if it's not a git repo.
@@ -62,7 +66,7 @@ equivalent Claude Code MCP settings file):
   "mcpServers": {
     "project-tracker": {
       "command": "node",
-      "args": ["C:\\Users\\Cristhian\\Documents\\projects\\project-tracker-mcp\\src\\index.js"],
+      "args": ["C:\\Users\\Cristhian\\Documents\\projects\\ai-engineer-path\\4-project-tracker\\mcp-server\\src\\index.js"],
       "env": {
         "SHEET_ID": "1U-r0YqCZ2oXnExBnwdVUtEfVx7fgG8oSLaEG79dN23U",
         "SHEET_TAB": "Todos",
