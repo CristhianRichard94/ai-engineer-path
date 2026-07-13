@@ -78,6 +78,10 @@ class SheetsService {
         const [id, description, status, source, created, doneDate, priority] = row;
         const createdDate = new Date(created);
         const parsedPriority = priority ? parseInt(priority, 10) : NaN;
+        const validPriority =
+            !isNaN(parsedPriority) && Number.isInteger(parsedPriority) && parsedPriority >= 1 && parsedPriority <= 5
+                ? parsedPriority
+                : undefined;
         return {
             id,
             description,
@@ -85,7 +89,7 @@ class SheetsService {
             status: ((status === "pending" ? "todo" : status) || "todo") as TodoStatus,
             doneDate: doneDate ? new Date(doneDate) : undefined,
             created: isNaN(createdDate.getTime()) ? new Date(0) : createdDate,
-            priority: isNaN(parsedPriority) ? undefined : parsedPriority,
+            priority: validPriority,
         };
     }
 
@@ -154,23 +158,49 @@ class SheetsService {
         updates: Partial<Omit<Todo, "id">> & { doneDate?: Date | string | null; priority?: number | null }
     ): Promise<Todo> {
         const spreadsheetId = this.extractSpreadsheetId(source);
-        const todos = await this.getTodos(source);
-        const existing = todos.find((todo) => todo.id === id);
-        if (!existing) {
-            throw new Error(`Todo ${id} not found`);
-        }
-        const updated: Todo = {
-            ...existing,
-            ...updates,
-            doneDate: updates.doneDate === null ? undefined : (updates.doneDate ?? existing.doneDate),
-            priority: updates.priority === null ? undefined : (updates.priority ?? existing.priority),
-        };
         const rowNumber = await this.findRowNumber(spreadsheetId, id);
-        await this.request(spreadsheetId, `/values/${SHEET_NAME}!A${rowNumber}:G${rowNumber}?valueInputOption=RAW`, {
-            method: "PUT",
-            body: JSON.stringify({ values: [this.todoToRow(updated)] }),
-        });
-        return updated;
+
+        const columnMap: Record<string, string> = {
+            description: "B",
+            status: "C",
+            source: "D",
+            doneDate: "F",
+            priority: "G",
+        };
+
+        const data: { range: string; values: string[][] }[] = [];
+
+        for (const key of Object.keys(updates) as (keyof typeof updates)[]) {
+            const column = columnMap[key as string];
+            if (!column) continue; // id/created are never updated
+
+            let cellValue: string;
+            if (key === "doneDate") {
+                const value = updates.doneDate;
+                cellValue = value ? this.sanitizeForSheet(this.toISOString(value)) : "";
+            } else if (key === "priority") {
+                const value = updates.priority;
+                cellValue = value !== null && value !== undefined ? String(value) : "";
+            } else {
+                const value = updates[key] as string | undefined;
+                cellValue = value !== undefined ? this.sanitizeForSheet(value) : "";
+            }
+
+            data.push({ range: `${SHEET_NAME}!${column}${rowNumber}`, values: [[cellValue]] });
+        }
+
+        if (data.length > 0) {
+            await this.request(spreadsheetId, `/values:batchUpdate`, {
+                method: "POST",
+                body: JSON.stringify({ valueInputOption: "RAW", data }),
+            });
+        }
+
+        // Build the return value from a fresh read of just this row, since we no
+        // longer hold a full-row snapshot (and never overwrite untouched columns).
+        const rowData = await this.request(spreadsheetId, `/values/${SHEET_NAME}!A${rowNumber}:G${rowNumber}`);
+        const row: string[] = (rowData.values && rowData.values[0]) || [];
+        return this.rowToTodo(row);
     }
 
     async deleteTodo(source: string, id: string): Promise<void> {

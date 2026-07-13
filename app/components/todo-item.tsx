@@ -415,7 +415,7 @@ export default function TodoItem({ todo, source, onChange, onSavingChange }: Tod
                             disabled={prioritySaving}
                             onChange={handlePriorityChange}
                             aria-label="Priority"
-                            className={`${BASE_SELECT_CLASSES} !min-w-[64px] ${priorityError ? "border-red-500 dark:border-red-500" : PRIORITY_CLASSES[priority]}`}
+                            className={`${BASE_SELECT_CLASSES} !min-w-[64px] ${priorityError ? "border-red-500 dark:border-red-500" : (PRIORITY_CLASSES[priority] ?? PRIORITY_CLASSES[""])}`}
                         >
                             {PRIORITY_OPTIONS.map((option) => (
                                 <option
