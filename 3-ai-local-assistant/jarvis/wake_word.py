@@ -64,6 +64,15 @@ class WakeWordDetector:
         return resample_poly(audio, up=1, down=3).astype(np.int16)
 
     def listen_for_wake(self):
+        # ponytail: blocking-mode streams (stream.read()) aren't supported on
+        # WDM-KS-only input devices (common on Windows). Callback + queue works
+        # on every host API, so it's the portable default here.
+        import queue
+        q = queue.Queue()
+
+        def _callback(indata, frames, time_info, status):
+            q.put(indata.copy())
+
         print("[JARVIS] Waiting for wake word...")
         with sd.InputStream(
             samplerate=self.capture_rate,
@@ -71,9 +80,10 @@ class WakeWordDetector:
             dtype='int16',
             blocksize=self.chunk,
             device=self.device,
-        ) as stream:
+            callback=_callback,
+        ):
             while True:
-                raw, _ = stream.read(self.chunk)
+                raw = q.get()
                 audio_16k = self._resample(raw.flatten())
                 self.model.predict(audio_16k)
                 scores = self.model.prediction_buffer.get("hey_jarvis", [0])

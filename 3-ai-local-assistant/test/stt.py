@@ -57,6 +57,22 @@ class TestResample(unittest.TestCase):
         self.assertEqual(out.dtype, np.int16)
 
 
+def _mock_input_stream(mock_sd, chunk):
+    """Make sd.InputStream(...) a context manager that fires callback once with `chunk`."""
+    stream = MagicMock()
+    stream.__enter__ = MagicMock(return_value=stream)
+    stream.__exit__ = MagicMock(return_value=False)
+
+    def _ctor(*args, **kwargs):
+        callback = kwargs.get("callback")
+        if callback is not None:
+            callback(chunk, len(chunk), None, None)
+        return stream
+
+    mock_sd.InputStream.side_effect = _ctor
+    mock_sd.sleep = MagicMock()
+
+
 class TestCaptureAndTranscribe(unittest.TestCase):
 
     def test_uses_detected_device_not_hardcoded(self):
@@ -64,19 +80,17 @@ class TestCaptureAndTranscribe(unittest.TestCase):
         import numpy as np
 
         with patch("stt.sd") as mock_sd:
-            mock_sd.rec.return_value = np.zeros((int(8 * 48000), 1), dtype=np.int16)
-            mock_sd.wait.return_value = None
+            _mock_input_stream(mock_sd, np.zeros((100, 1), dtype=np.int16))
             t.client.audio.transcriptions.create.return_value = MagicMock(text="hello")
             t.capture_and_transcribe()
-            _, kwargs = mock_sd.rec.call_args
+            _, kwargs = mock_sd.InputStream.call_args
             self.assertEqual(kwargs["device"], t.device)
 
     def test_returns_none_on_api_exception(self):
         t = _make_transcriber([{"name": "x", "max_input_channels": 1}])
         import numpy as np
         with patch("stt.sd") as mock_sd:
-            mock_sd.rec.return_value = np.zeros((int(8 * 48000), 1), dtype=np.int16)
-            mock_sd.wait.return_value = None
+            _mock_input_stream(mock_sd, np.zeros((100, 1), dtype=np.int16))
             t.client.audio.transcriptions.create.side_effect = Exception("api down")
             result = t.capture_and_transcribe()
             self.assertIsNone(result)
@@ -85,8 +99,7 @@ class TestCaptureAndTranscribe(unittest.TestCase):
         t = _make_transcriber([{"name": "x", "max_input_channels": 1}])
         import numpy as np
         with patch("stt.sd") as mock_sd:
-            mock_sd.rec.return_value = np.zeros((int(8 * 48000), 1), dtype=np.int16)
-            mock_sd.wait.return_value = None
+            _mock_input_stream(mock_sd, np.zeros((100, 1), dtype=np.int16))
             t.client.audio.transcriptions.create.return_value = MagicMock(text="   ")
             result = t.capture_and_transcribe()
             self.assertIsNone(result)

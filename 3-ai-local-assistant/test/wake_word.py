@@ -72,13 +72,17 @@ class TestListenForWake(unittest.TestCase):
         chunk = np.zeros((detector.chunk, 1), dtype=np.int16)
 
         mock_stream = MagicMock()
-        mock_stream.read.return_value = (chunk, None)
         mock_stream.__enter__.return_value = mock_stream
 
         detector.model.prediction_buffer = {"hey_jarvis": [0.9]}
 
+        def _ctor(*args, **kwargs):
+            callback = kwargs.get("callback")
+            callback(chunk, len(chunk), None, None)
+            return mock_stream
+
         with patch("wake_word.sd") as mock_sd:
-            mock_sd.InputStream.return_value = mock_stream
+            mock_sd.InputStream.side_effect = _ctor
             result = detector.listen_for_wake()
 
         self.assertTrue(result)

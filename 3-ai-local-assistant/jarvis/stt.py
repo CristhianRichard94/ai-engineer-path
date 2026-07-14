@@ -22,15 +22,21 @@ class SpeechTranscriber:
         return resample_poly(audio, up=1, down=3).astype(np.int16)
 
     def capture_and_transcribe(self, max_seconds=8) -> str | None:
+        # ponytail: sd.rec()/sd.wait() is blocking-mode API, unsupported on
+        # WDM-KS-only input devices (common on Windows) - use InputStream
+        # callback instead, same fix as wake_word.py.
         print("[JARVIS] Listening...")
-        raw = sd.rec(
-            int(max_seconds * self.capture_rate),
+        frames = []
+        with sd.InputStream(
             samplerate=self.capture_rate,
             channels=1,
             dtype='int16',
-            device=self.device
-        )
-        sd.wait()
+            device=self.device,
+            callback=lambda indata, n, t, status: frames.append(indata.copy()),
+        ):
+            sd.sleep(int(max_seconds * 1000))
+
+        raw = np.concatenate(frames, axis=0) if frames else np.zeros((0, 1), dtype='int16')
         audio_16k = self._resample(raw.flatten())
 
         buf = io.BytesIO()
