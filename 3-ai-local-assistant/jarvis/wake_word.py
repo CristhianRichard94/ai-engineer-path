@@ -1,5 +1,6 @@
-# wake_word.py - 48000 Hz capture, resampled to 16000 for the model
+# wake_word.py - captures at the default mic's native rate, resampled to 16000 for the model
 import os
+import math
 import urllib.request
 import sounddevice as sd
 import numpy as np
@@ -46,22 +47,30 @@ class WakeWordDetector:
             wakeword_models=["hey_jarvis"],
             inference_framework="onnx"
         )
-        self.capture_rate = 48000   # what Realtek accepts
         self.model_rate   = 16000   # what OpenWakeWord expects
-        self.chunk        = 3840    # 80ms at 48000 Hz (= 1280 at 16000)
         self.threshold    = 0.3
-        self.device       = self._find_mic()
+        self.device, self.capture_rate = self._find_mic()
+        self.chunk = int(0.08 * self.capture_rate)  # ~80ms per block
+
+        g = math.gcd(self.model_rate, int(self.capture_rate))
+        self._resample_up   = self.model_rate // g
+        self._resample_down = int(self.capture_rate) // g
 
     def _find_mic(self):
-        for i, d in enumerate(sd.query_devices()):
-            if d['max_input_channels'] > 0 and 'Realtek' in d['name']:
-                print("[MIC] Using -> index {}: {}".format(i, d['name']))
-                return i
-        return sd.default.device[0]
+        # ponytail: trust the OS default input device rather than guessing by
+        # name — a hardcoded "prefer Realtek" match can pick an unplugged/
+        # disconnected device over the mic that's actually active (e.g. a
+        # connected Bluetooth headset).
+        index = sd.default.device[0]
+        info  = sd.query_devices(index)
+        print("[MIC] Using -> index {}: {} ({} Hz)".format(
+            index, info['name'], info['default_samplerate']))
+        return index, info['default_samplerate']
 
     def _resample(self, audio):
-        # downsample 48000 -> 16000 (factor 1/3)
-        return resample_poly(audio, up=1, down=3).astype(np.int16)
+        if self._resample_up == self._resample_down:
+            return audio.astype(np.int16)
+        return resample_poly(audio, up=self._resample_up, down=self._resample_down).astype(np.int16)
 
     def listen_for_wake(self):
         # ponytail: blocking-mode streams (stream.read()) aren't supported on

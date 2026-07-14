@@ -1,4 +1,5 @@
-# stt.py — 48000 Hz capture, resampled to 16000 for Whisper
+# stt.py — captures at the default mic's native rate, resampled to 16000 for Whisper
+import math
 import openai
 import sounddevice as sd
 import numpy as np
@@ -7,19 +8,25 @@ import io, wave
 
 class SpeechTranscriber:
     def __init__(self, api_key: str):
-        self.client       = openai.OpenAI(api_key=api_key)
-        self.capture_rate = 48000
-        self.model_rate   = 16000
-        self.device       = self._find_mic()
+        self.client     = openai.OpenAI(api_key=api_key)
+        self.model_rate = 16000
+        self.device, self.capture_rate = self._find_mic()
+
+        g = math.gcd(self.model_rate, int(self.capture_rate))
+        self._resample_up   = self.model_rate // g
+        self._resample_down = int(self.capture_rate) // g
 
     def _find_mic(self):
-        for i, d in enumerate(sd.query_devices()):
-            if d['max_input_channels'] > 0 and 'Realtek' in d['name']:
-                return i
-        return sd.default.device[0]
+        # ponytail: trust the OS default input device rather than guessing by
+        # name — see wake_word.py._find_mic for why.
+        index = sd.default.device[0]
+        info  = sd.query_devices(index)
+        return index, info['default_samplerate']
 
     def _resample(self, audio: np.ndarray) -> np.ndarray:
-        return resample_poly(audio, up=1, down=3).astype(np.int16)
+        if self._resample_up == self._resample_down:
+            return audio.astype(np.int16)
+        return resample_poly(audio, up=self._resample_up, down=self._resample_down).astype(np.int16)
 
     def capture_and_transcribe(self, max_seconds=8) -> str | None:
         # ponytail: sd.rec()/sd.wait() is blocking-mode API, unsupported on

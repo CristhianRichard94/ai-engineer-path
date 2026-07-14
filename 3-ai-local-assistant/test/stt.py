@@ -22,39 +22,46 @@ import stt as stt_module
 from stt import SpeechTranscriber
 
 
-def _make_transcriber(devices):
+def _make_transcriber(default_index=7, device_info=None):
+    device_info = device_info or {"name": "x", "default_samplerate": 48000.0}
     with patch("stt.openai"), patch("stt.sd") as mock_sd:
-        mock_sd.query_devices.return_value = devices
-        mock_sd.default.device = (7, 7)
+        mock_sd.default.device = (default_index, default_index)
+        mock_sd.query_devices.return_value = device_info
         t = SpeechTranscriber(api_key="test-key")
     return t
 
 
 class TestFindMic(unittest.TestCase):
 
-    def test_prefers_realtek_input_device(self):
-        devices = [
-            {"name": "USB Mic", "max_input_channels": 1},
-            {"name": "Realtek Mic Array", "max_input_channels": 2},
-        ]
-        t = _make_transcriber(devices)
-        self.assertEqual(t.device, 1)
-
-    def test_falls_back_to_default_when_no_realtek_input(self):
-        devices = [{"name": "USB Mic", "max_input_channels": 1}]
-        t = _make_transcriber(devices)
-        self.assertEqual(t.device, 7)
+    def test_uses_os_default_input_device_not_name_matching(self):
+        # Regression: previously a "prefer Realtek" name match could pick a
+        # disconnected device over the mic the OS actually has active.
+        t = _make_transcriber(default_index=18, device_info={
+            "name": "Auriculares con microfono (Bluetooth)",
+            "default_samplerate": 16000.0,
+        })
+        self.assertEqual(t.device, 18)
+        self.assertEqual(t.capture_rate, 16000.0)
 
 
 class TestResample(unittest.TestCase):
 
     def test_resample_downsamples_48k_to_16k_length(self):
-        t = _make_transcriber([{"name": "x", "max_input_channels": 1}])
+        t = _make_transcriber(device_info={"name": "x", "default_samplerate": 48000.0})
         import numpy as np
         audio = np.zeros(48000, dtype=np.int16)
         out = t._resample(audio)
         self.assertEqual(len(out), 16000)
         self.assertEqual(out.dtype, np.int16)
+
+    def test_no_resample_when_device_already_native_16k(self):
+        t = _make_transcriber(default_index=18, device_info={
+            "name": "x", "default_samplerate": 16000.0
+        })
+        import numpy as np
+        audio = np.zeros(16000, dtype=np.int16)
+        out = t._resample(audio)
+        self.assertEqual(len(out), 16000)
 
 
 def _mock_input_stream(mock_sd, chunk):
@@ -76,7 +83,7 @@ def _mock_input_stream(mock_sd, chunk):
 class TestCaptureAndTranscribe(unittest.TestCase):
 
     def test_uses_detected_device_not_hardcoded(self):
-        t = _make_transcriber([{"name": "Realtek Mic", "max_input_channels": 1}])
+        t = _make_transcriber()
         import numpy as np
 
         with patch("stt.sd") as mock_sd:
@@ -87,7 +94,7 @@ class TestCaptureAndTranscribe(unittest.TestCase):
             self.assertEqual(kwargs["device"], t.device)
 
     def test_returns_none_on_api_exception(self):
-        t = _make_transcriber([{"name": "x", "max_input_channels": 1}])
+        t = _make_transcriber()
         import numpy as np
         with patch("stt.sd") as mock_sd:
             _mock_input_stream(mock_sd, np.zeros((100, 1), dtype=np.int16))
@@ -96,7 +103,7 @@ class TestCaptureAndTranscribe(unittest.TestCase):
             self.assertIsNone(result)
 
     def test_returns_none_on_empty_transcript(self):
-        t = _make_transcriber([{"name": "x", "max_input_channels": 1}])
+        t = _make_transcriber()
         import numpy as np
         with patch("stt.sd") as mock_sd:
             _mock_input_stream(mock_sd, np.zeros((100, 1), dtype=np.int16))
