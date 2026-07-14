@@ -28,7 +28,7 @@ class SpeechTranscriber:
             samplerate=self.capture_rate,
             channels=1,
             dtype='int16',
-            device=15
+            device=self.device
         )
         sd.wait()
         audio_16k = self._resample(raw.flatten())

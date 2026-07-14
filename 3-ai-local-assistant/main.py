@@ -14,7 +14,11 @@ Session flow:
 """
 
 import os
+import sys
 from dotenv import load_dotenv
+
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "jarvis"))
+
 from wake_word import WakeWordDetector
 from stt      import SpeechTranscriber
 from tts      import Speaker

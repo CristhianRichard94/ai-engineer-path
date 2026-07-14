@@ -13,6 +13,7 @@ import psutil
 import requests
 
 from spotify_player import SpotifyPlayer, SpotifyAuthError
+from audio_switcher import AudioSwitcher
 
 
 class IntentRouter:
@@ -22,6 +23,7 @@ class IntentRouter:
 
         # Spotify player (lazy-loaded on first use)
         self._spotify = None
+        self._audio   = AudioSwitcher()
 
         # Route table: intent name -> method name on this class.
         # Using method NAMES (not bound methods) so that tests can replace
@@ -36,6 +38,7 @@ class IntentRouter:
             "set_volume"     : "set_volume",
             "open_folder"    : "open_folder",
             "play_spotify"   : "play_spotify",
+            "switch_audio"   : "switch_audio",
             "goodbye"        : "goodbye",
             "chat"           : "do_nothing",
         }
@@ -46,6 +49,7 @@ class IntentRouter:
             "get_system_info",
             "get_time",
             "play_spotify",
+            "switch_audio",
         }
 
     # ------------------------------------------------------------------
@@ -141,6 +145,12 @@ class IntentRouter:
         except Exception as e:
             print("[SPOTIFY] Unexpected error: {}".format(e))
             return "There was an error connecting to Spotify, sir."
+
+    def switch_audio(self, p):
+        device = p.get("device", "").strip()
+        if not device:
+            return "Please specify an audio device, sir."
+        return self._audio.switch(device)
 
     def goodbye(self, p):
         # Signals main.py to end the current session; reply comes from GPT

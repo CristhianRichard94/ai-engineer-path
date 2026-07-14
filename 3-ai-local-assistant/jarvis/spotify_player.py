@@ -78,7 +78,7 @@ class SpotifyPlayer:
             items = results.get("tracks", {}).get("items", [])
             return items[0] if items else None
         except spotipy.exceptions.SpotifyException as e:
-            if "invalid_client" in str(e) or e.http_status in (400, 401):
+            if "invalid_client" in str(e) or getattr(e, "http_status", None) in (400, 401):
                 raise SpotifyAuthError(
                     "Spotify credentials are invalid or missing. "
                     "Please add SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to your .env file. "
@@ -103,10 +103,6 @@ class SpotifyPlayer:
         """Open Spotify desktop app to the track via URI scheme."""
         uri = "spotify:track:{}".format(track_id)
         try:
-            # os.startfile is the correct Windows API for registered URI handlers
-            os.startfile(uri)
-        except AttributeError:
-            # Non-Windows fallback
-            subprocess.Popen(["cmd", "/c", "start", "", uri], shell=True)
+            subprocess.Popen(["cmd", "/c", "start", "", uri], shell=False)
         except Exception as e:
             print("[SPOTIFY] URI launch error: {}".format(e))

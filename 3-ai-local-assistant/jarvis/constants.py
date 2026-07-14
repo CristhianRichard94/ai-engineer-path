@@ -23,11 +23,13 @@ Available intents:
 - get_system_info: {}
 - open_folder    : { "path": "..." }
 - play_spotify   : { "query": "<song name, artist, or both>" }
+- switch_audio   : { "device": "speaker|headphones" }
 - goodbye        : {}
 - chat           : {}
 
 Examples:
   "play Bohemian Rhapsody"       -> play_spotify { "query": "Bohemian Rhapsody" }
   "play something by Daft Punk"  -> play_spotify { "query": "Daft Punk" }
+  "switch to headphones"         -> switch_audio { "device": "headphones" }
   "goodbye / that's all / bye"   -> goodbye {}
 """
