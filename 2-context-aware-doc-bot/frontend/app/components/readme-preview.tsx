@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import rehypeRaw from "rehype-raw";
+import remarkGfm from "remark-gfm";
 import { fetchReadmeRaw, toRepoFetchError } from "../lib/github";
 import type { RepoFetchError } from "../lib/types";
 
@@ -117,7 +119,9 @@ export default function ReadmePreview({ owner, repo }: ReadmePreviewProps) {
 
       {displayState.status === "loaded" && (
         <div className="prose prose-sm dark:prose-invert max-w-none">
-          <ReactMarkdown>{displayState.content}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+            {displayState.content}
+          </ReactMarkdown>
         </div>
       )}
     </div>

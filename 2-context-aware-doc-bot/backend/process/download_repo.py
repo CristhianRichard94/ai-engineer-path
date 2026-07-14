@@ -10,7 +10,7 @@ import zipfile
 
 import requests
 
-CLONE_DIR = "temp"
+CLONE_DIR = "repo_cache"
 
 def download_repo(input_url):
     match = re.match(r"https://github\.com/([^/]+)/([^/]+?)(?:\.git)?$", input_url)

@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .env
 temp/
+repo_cache/
 results/
 app.log
 qdrant_storage/
