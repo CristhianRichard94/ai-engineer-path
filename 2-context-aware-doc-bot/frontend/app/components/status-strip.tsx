@@ -28,14 +28,21 @@ const VARIANT_CLASSES: Record<StatusStripVariant, string> = {
     "border-red-300 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200",
 };
 
-function Spinner() {
-  return (
-    <span
-      aria-hidden="true"
-      className="inline-block h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin shrink-0"
-    />
-  );
-}
+const TRACK_CLASSES: Record<StatusStripVariant, string> = {
+  pending: "bg-zinc-200 dark:bg-zinc-700",
+  started: "bg-blue-200 dark:bg-blue-900",
+  success: "",
+  already_indexed: "bg-zinc-200 dark:bg-zinc-700",
+  failure: "bg-red-200 dark:bg-red-900",
+};
+
+const SWEEP_CLASSES: Record<StatusStripVariant, string> = {
+  pending: "bg-zinc-500 dark:bg-zinc-400",
+  started: "bg-blue-500 dark:bg-blue-400",
+  success: "",
+  already_indexed: "bg-zinc-500 dark:bg-zinc-400",
+  failure: "bg-red-500 dark:bg-red-400",
+};
 
 export default function StatusStrip({
   variant,
@@ -44,26 +51,42 @@ export default function StatusStrip({
   fading = false,
 }: StatusStripProps) {
   const isFailure = variant === "failure";
-  const showSpinner = variant === "pending" || variant === "started";
+  const isSweeping = variant === "pending" || variant === "started";
+  const showBar = isSweeping || isFailure;
 
   return (
     <div
       role={isFailure ? "alert" : "status"}
       aria-live={isFailure ? undefined : "polite"}
-      className={`rounded-lg border px-4 py-3 flex items-center gap-3 text-sm transition-opacity duration-[1800ms] ${VARIANT_CLASSES[variant]} ${
+      className={`status-strip-fade rounded-lg border px-4 py-3 text-sm transition-opacity duration-[1800ms] ${VARIANT_CLASSES[variant]} ${
         fading ? "opacity-0" : "opacity-100"
       }`}
     >
-      {showSpinner && <Spinner />}
-      <span className="flex-1">{message}</span>
-      {isFailure && onRetry && (
-        <button
-          type="button"
-          onClick={onRetry}
-          className="bg-red-600 text-white px-3 py-1.5 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-red-950 shrink-0"
+      <div className="flex items-center gap-3">
+        <span className="flex-1">{message}</span>
+        {isFailure && onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="bg-red-600 text-white px-3 py-1.5 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-red-950 shrink-0"
+          >
+            Retry
+          </button>
+        )}
+      </div>
+      {showBar && (
+        <div
+          aria-hidden="true"
+          className={`mt-2 h-1 w-full rounded-full overflow-hidden ${TRACK_CLASSES[variant]}`}
         >
-          Retry
-        </button>
+          {isFailure ? (
+            <div className={`h-full w-full rounded-full ${SWEEP_CLASSES[variant]}`} />
+          ) : (
+            <div
+              className={`h-full w-[30%] rounded-full animate-progress-sweep motion-reduce:animate-none motion-reduce:translate-x-0 ${SWEEP_CLASSES[variant]}`}
+            />
+          )}
+        </div>
       )}
     </div>
   );

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import StarfieldBackground from "./components/starfield-background";
 
 // Note: this scaffold originally used `next/font/google` (Geist/Geist Mono),
 // which fetches font files from fonts.googleapis.com at build time. That
@@ -20,7 +21,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full antialiased bg-gradient-to-br from-blue-950 to-black bg-fixed">
-      <body className="h-full flex flex-col overflow-hidden">{children}</body>
+      <body className="h-full flex flex-col overflow-hidden">
+        <div className="fixed inset-0 -z-10 pointer-events-none">
+          <StarfieldBackground />
+        </div>
+        {children}
+      </body>
     </html>
   );
 }

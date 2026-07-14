@@ -27,3 +27,63 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes progress-sweep {
+    0% {
+      transform: translateX(-30%);
+    }
+    100% {
+      transform: translateX(130%);
+    }
+  }
+  .animate-progress-sweep {
+    animation: progress-sweep 1.4s ease-in-out infinite;
+  }
+
+  @keyframes message-slide-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .animate-message-slide-in {
+    animation: message-slide-in 180ms ease-out;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-strip-fade {
+    transition-duration: 300ms !important;
+  }
+}
+
+.message-fade-in {
+  animation: message-fade-only 150ms ease-out;
+}
+
+@keyframes message-fade-only {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.content-crossfade {
+  animation: content-crossfade 150ms ease-out;
+}
+
+@keyframes content-crossfade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
