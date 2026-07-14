@@ -218,6 +218,13 @@ export default function ChatPanel({ repoUrl, messages, onMessagesChange }: ChatP
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto flex flex-col mb-4"
       >
+        {messages.length === 0 && (
+          <div className="p-4 rounded-lg mb-4 self-start max-w-[85%] bg-zinc-200 dark:bg-gray-900 text-zinc-700 dark:text-zinc-300 text-sm">
+            {ready
+              ? "Repo indexed. Ask anything about its code or docs to get started."
+              : "Index a repo to start chatting."}
+          </div>
+        )}
         {messages.map((message) => {
           if (message.role === "user") {
             return (

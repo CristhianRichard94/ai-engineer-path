@@ -8,6 +8,8 @@ interface FileTreeProps {
   owner: string;
   repo: string;
   branch: string;
+  onSelectFile?: (path: string) => void;
+  selectedPath?: string | null;
 }
 
 interface TreeNodeState {
@@ -67,7 +69,7 @@ function ErrorBanner({
   );
 }
 
-export default function FileTree({ owner, repo, branch }: FileTreeProps) {
+export default function FileTree({ owner, repo, branch, onSelectFile, selectedPath }: FileTreeProps) {
   const [rootAttempt, setRootAttempt] = useState(0);
   const rootKey = `${owner}/${repo}/${branch}/${rootAttempt}`;
 
@@ -245,6 +247,8 @@ export default function FileTree({ owner, repo, branch }: FileTreeProps) {
       e.preventDefault();
       if (node.item.type === "dir") {
         toggleNode(path);
+      } else {
+        onSelectFile?.(path);
       }
       return;
     }
@@ -296,11 +300,11 @@ export default function FileTree({ owner, repo, branch }: FileTreeProps) {
                   aria-expanded={isDir ? node.expanded : undefined}
                   aria-selected={isDir ? node.expanded : false}
                   tabIndex={0}
-                  onClick={() => isDir && toggleNode(path)}
+                  onClick={() => (isDir ? toggleNode(path) : onSelectFile?.(path))}
                   onKeyDown={(e) => handleKeyDown(e, path)}
                   style={{ paddingLeft: 8 + node.depth * 16 }}
                   className={`flex items-center gap-1.5 px-2 py-2.5 rounded-md text-sm text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset ${
-                    isDir && node.expanded
+                    (isDir && node.expanded) || (!isDir && selectedPath === path)
                       ? "bg-blue-50 dark:bg-blue-950 text-blue-800 dark:text-blue-200"
                       : ""
                   }`}

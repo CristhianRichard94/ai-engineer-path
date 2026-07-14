@@ -4,6 +4,7 @@ import { useState } from "react";
 import RepoMetadata from "./repo-metadata";
 import FileTree from "./file-tree";
 import ReadmePreview from "./readme-preview";
+import FileViewer from "./file-viewer";
 import type { GithubRepoMetadata } from "../lib/types";
 
 interface RepoPanelProps {
@@ -34,20 +35,39 @@ export default function RepoPanel({ owner, repo }: RepoPanelProps) {
   // for resetting state without calling setState synchronously inside a
   // useEffect body.
   const branch = branchState.key === repoKey ? branchState.branch : null;
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
 
   function handleMetadataLoaded(data: GithubRepoMetadata) {
     setBranchState({ key: repoKey, branch: data.default_branch });
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="relative flex flex-col h-full">
       <RepoMetadata owner={owner} repo={repo} onMetadataLoaded={handleMetadataLoaded} />
       <div className="border-t border-zinc-200 dark:border-zinc-800 flex-1 min-h-0 flex flex-col">
-        {branch !== null && <FileTree owner={owner} repo={repo} branch={branch} />}
+        {branch !== null && (
+          <FileTree
+            owner={owner}
+            repo={repo}
+            branch={branch}
+            onSelectFile={setSelectedFile}
+            selectedPath={selectedFile}
+          />
+        )}
       </div>
       <div className="border-t border-zinc-200 dark:border-zinc-800 flex-1 min-h-0 flex flex-col">
         <ReadmePreview owner={owner} repo={repo} />
       </div>
+
+      {selectedFile && branch !== null && (
+        <FileViewer
+          owner={owner}
+          repo={repo}
+          branch={branch}
+          path={selectedFile}
+          onClose={() => setSelectedFile(null)}
+        />
+      )}
     </div>
   );
 }

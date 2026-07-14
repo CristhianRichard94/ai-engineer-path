@@ -120,6 +120,24 @@ export async function fetchReadmeRaw(owner: string, repo: string): Promise<strin
   return response.text();
 }
 
+export async function fetchFileRaw(
+  owner: string,
+  repo: string,
+  path: string,
+  ref: string
+): Promise<string> {
+  const encodedPath = path
+    .split("/")
+    .filter(Boolean)
+    .map(encodeURIComponent)
+    .join("/");
+  const response = await githubFetch(
+    `/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`,
+    { headers: { Accept: "application/vnd.github.raw" } }
+  );
+  return response.text();
+}
+
 export function toRepoFetchError(err: unknown): RepoFetchError {
   if (err instanceof GithubApiError) {
     return { kind: err.kind, message: err.message };

@@ -218,7 +218,7 @@ export default function Home() {
 
   return (
     <div
-      className={`flex flex-col flex-1 items-center bg-zinc-50 font-sans dark:bg-black ${
+      className={`flex flex-col flex-1 min-h-0 items-center font-sans ${
         isReady ? "" : "justify-center"
       }`}
     >
@@ -255,7 +255,7 @@ export default function Home() {
       )}
 
       {isReady && activeRepo && (
-        <div className="flex flex-col w-full max-w-6xl flex-1 bg-white dark:bg-black">
+        <div className="flex flex-col w-full max-w-6xl flex-1 min-h-0 bg-white dark:bg-black">
           <div className="border-b border-zinc-200 dark:border-zinc-800 px-4 py-3 sm:px-6 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
             <div className="flex-1">
               <RepoForm
