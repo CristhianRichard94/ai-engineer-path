@@ -12,11 +12,23 @@ from unittest.mock import MagicMock, patch, call
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
+JARVIS_DIR = os.path.join(ROOT, "jarvis")
+if JARVIS_DIR not in sys.path:
+    sys.path.insert(0, JARVIS_DIR)
 
 # Stub spotipy before importing the module under test
 for mod in ("spotipy", "spotipy.oauth2", "spotipy.exceptions"):
     if mod not in sys.modules:
         sys.modules[mod] = MagicMock()
+
+# SpotifyException is used in an `except` clause by the module under test,
+# so it must be a real exception class, not a MagicMock attribute. The
+# module under test accesses it as `spotipy.exceptions.SpotifyException`
+# (attribute access on the stubbed `spotipy` MagicMock, not a separate
+# import), so it must be patched on both stub entries.
+_spotify_exception = type("SpotifyException", (Exception,), {})
+sys.modules["spotipy.exceptions"].SpotifyException = _spotify_exception
+sys.modules["spotipy"].exceptions.SpotifyException = _spotify_exception
 
 import spotify_player as sp_module
 from spotify_player import SpotifyPlayer

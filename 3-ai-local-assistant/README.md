@@ -156,6 +156,6 @@ tools/
 
 ## Notes
 
-- Mic device index is hardcoded (`15`) in `stt.py` — change if your setup differs
+- Mic input uses the OS default recording device (`sd.default.device`) — set your mic as Windows default if wrong device is picked up
 - Wake word model (`hey_jarvis_v0.1.onnx`) auto-downloads on first run
 - Spotify OAuth mode requires Spotify Premium and stores a cache at `.spotify_cache`
