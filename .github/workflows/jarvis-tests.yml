@@ -1,0 +1,25 @@
+name: jarvis-tests
+
+on:
+  push:
+    paths:
+      - "3-ai-local-assistant/**"
+      - ".github/workflows/jarvis-tests.yml"
+  pull_request:
+    paths:
+      - "3-ai-local-assistant/**"
+      - ".github/workflows/jarvis-tests.yml"
+
+jobs:
+  test:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: 3-ai-local-assistant
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements.txt
+      - run: pytest test/

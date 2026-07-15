@@ -13,6 +13,9 @@ from unittest.mock import MagicMock, patch
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
+JARVIS_DIR = os.path.join(ROOT, "jarvis")
+if JARVIS_DIR not in sys.path:
+    sys.path.insert(0, JARVIS_DIR)
 
 for mod in ("sounddevice", "openai"):
     if mod not in sys.modules:
