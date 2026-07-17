@@ -20,5 +20,8 @@ keyboard                # global hotkey listener
 pycaw                   # Windows Core Audio API (volume control)
 comtypes                # COM bindings required by pycaw
 
+# ── Control UI ────────────────────────────────────────────────────────
+flask                   # local control UI server (ui/server.py)
+
 # ── Testing ───────────────────────────────────────────────────────────
 pytest                  # test runner

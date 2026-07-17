@@ -16,12 +16,16 @@ ElevenLabs keys go in .env:
 """
 
 import os
+import sys
 import io
 import queue
 import threading
 
 import numpy as np
 import sounddevice as sd
+
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "jarvis"))
+from state import write_state
 
 
 # ── Fish Speech config ───────────────────────────────────────────────────────
@@ -53,6 +57,7 @@ class Speaker:
     def speak(self, text: str):
         """Speak text; block until audio finishes."""
         print("[JARVIS] Speaking: {}".format(text))
+        write_state("speaking", detail=text)
 
         if self._try_fish_speech(text):
             return

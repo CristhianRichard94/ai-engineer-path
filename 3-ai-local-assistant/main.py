@@ -24,6 +24,7 @@ from stt      import SpeechTranscriber
 from tts      import Speaker
 from brain    import JarvisBrain
 from router   import IntentRouter
+from state    import write_state
 
 load_dotenv()
 
@@ -44,7 +45,7 @@ def run_session(stt, brain, router, speaker):
         intent = parsed.get("intent", "chat")
 
         # ── Dispatch ────────────────────────────────────────────────
-        reply = router.dispatch(parsed)
+        reply = router.dispatch(parsed, raw_text=command)
 
         # ── Speak ───────────────────────────────────────────────────
         speaker.speak(reply)
@@ -76,6 +77,7 @@ def main():
         speaker.speak("Shutting down. Goodbye, sir.")
     finally:
         wake.cleanup()
+        write_state("off")
 
 
 if __name__ == "__main__":
