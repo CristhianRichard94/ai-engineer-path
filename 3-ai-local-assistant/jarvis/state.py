@@ -15,6 +15,7 @@ import time
 
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir))
 STATE_FILE = os.path.join(_REPO_ROOT, "state.json")
+TRANSCRIPT_FILE = os.path.join(_REPO_ROOT, "transcript.jsonl")
 
 
 def write_state(state: str, detail: str = ""):
@@ -39,3 +40,29 @@ def write_state(state: str, detail: str = ""):
     except OSError as e:
         # Best-effort: state reporting should never crash JARVIS itself.
         print("[STATE] Failed to write state.json: {}".format(e))
+
+
+def append_transcript(role: str, text: str):
+    """Append a single conversation turn to transcript.jsonl.
+
+    role: "user" | "assistant"
+    text: the transcribed/spoken text for this turn
+
+    This is a simple append-only log (not atomic like write_state) - safe
+    because each write is a single line and we never rewrite prior lines.
+    """
+    if not text:
+        return
+
+    line = json.dumps({
+        "role": role,
+        "text": text,
+        "ts": time.time(),
+    })
+
+    try:
+        with open(TRANSCRIPT_FILE, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except OSError as e:
+        # Best-effort: transcript logging should never crash JARVIS itself.
+        print("[STATE] Failed to append transcript.jsonl: {}".format(e))

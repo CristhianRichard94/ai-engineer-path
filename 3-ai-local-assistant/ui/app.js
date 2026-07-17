@@ -24,6 +24,8 @@
   const statusEl = document.getElementById("status-text");
   const banner = document.getElementById("connection-banner");
 
+  const transcriptLog = document.getElementById("transcript-log");
+
   const idleBtn = document.getElementById("restart-idle-btn");
   const confirmWrapper = document.getElementById("restart-confirm-wrapper");
   const confirmBtn = document.getElementById("restart-confirm-btn");
@@ -106,6 +108,57 @@
       }
     }
   }
+
+  // ── Transcript panel ──────────────────────────────────────────────
+
+  const TRANSCRIPT_POLL_INTERVAL = 1500;
+  let transcriptSeenCount = 0;
+
+  function roleLabel(role) {
+    return role === "user" ? "You:" : "JARVIS:";
+  }
+
+  function renderTranscriptEntries(entries) {
+    entries.forEach((entry) => {
+      const line = document.createElement("div");
+      const roleClass = entry.role === "user" ? "transcript-user" : "transcript-assistant";
+      line.className = "transcript-entry " + roleClass;
+
+      const roleSpan = document.createElement("span");
+      roleSpan.className = "transcript-role";
+      roleSpan.textContent = roleLabel(entry.role);
+      line.appendChild(roleSpan);
+
+      line.appendChild(document.createTextNode(String(entry.text || "")));
+      transcriptLog.appendChild(line);
+    });
+
+    if (entries.length > 0) {
+      transcriptLog.scrollTop = transcriptLog.scrollHeight;
+    }
+  }
+
+  function pollTranscript() {
+    fetch("/transcript")
+      .then((res) => res.json())
+      .then((entries) => {
+        if (!Array.isArray(entries)) return;
+        if (entries.length < transcriptSeenCount) {
+          // Transcript file was reset/rotated - re-render from scratch.
+          transcriptLog.textContent = "";
+          transcriptSeenCount = 0;
+        }
+        const newEntries = entries.slice(transcriptSeenCount);
+        renderTranscriptEntries(newEntries);
+        transcriptSeenCount = entries.length;
+      })
+      .catch(() => {
+        // Ignore transient network errors; next poll will retry.
+      });
+  }
+
+  pollTranscript();
+  setInterval(pollTranscript, TRANSCRIPT_POLL_INTERVAL);
 
   // ── Connection banner ────────────────────────────────────────────
 

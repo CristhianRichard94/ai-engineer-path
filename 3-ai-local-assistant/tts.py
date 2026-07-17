@@ -25,7 +25,7 @@ import numpy as np
 import sounddevice as sd
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "jarvis"))
-from state import write_state
+from state import write_state, append_transcript
 
 
 # ── Fish Speech config ───────────────────────────────────────────────────────
@@ -58,6 +58,7 @@ class Speaker:
         """Speak text; block until audio finishes."""
         print("[JARVIS] Speaking: {}".format(text))
         write_state("speaking", detail=text)
+        append_transcript("assistant", text)
 
         if self._try_fish_speech(text):
             return
