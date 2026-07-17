@@ -26,18 +26,18 @@
 
   const transcriptLog = document.getElementById("transcript-log");
 
-  const idleBtn = document.getElementById("restart-idle-btn");
-  const confirmWrapper = document.getElementById("restart-confirm-wrapper");
-  const confirmBtn = document.getElementById("restart-confirm-btn");
-  const cancelBtn = document.getElementById("restart-cancel-btn");
+  const restartBtn = document.getElementById("restart-btn");
 
   let currentState = "off";
   let thinkingSinceTs = null;
   let thinkingTimer = null;
 
   let confirmRevertTimer = null;
+  let confirmTickTimer = null;
+  let confirmSecondsLeft = 0;
   let restartTimeoutTimer = null;
   let optimisticRestarting = false;
+  let restartUiState = "idle"; // "idle" | "confirm" | "restarting"
 
   // ── Status text rendering ──────────────────────────────────────────
 
@@ -213,23 +213,19 @@
 
   connect();
 
-  // ── Restart button (two-step + optimistic UI) ────────────────────
+  // ── Restart button (single element, state-cycling + optimistic UI) ──
 
-  function resetRestartButton() {
-    idleBtn.hidden = false;
-    idleBtn.disabled = false;
-    idleBtn.innerHTML = "Restart JARVIS";
-    confirmWrapper.hidden = true;
-  }
+  const CONFIRM_WINDOW_SECONDS = 4;
 
-  function showConfirmMode() {
-    idleBtn.hidden = true;
-    confirmWrapper.hidden = false;
-    if (confirmRevertTimer) clearTimeout(confirmRevertTimer);
-    confirmRevertTimer = setTimeout(() => {
-      confirmWrapper.hidden = true;
-      idleBtn.hidden = false;
-    }, 4000);
+  function clearConfirmTimers() {
+    if (confirmRevertTimer) {
+      clearTimeout(confirmRevertTimer);
+      confirmRevertTimer = null;
+    }
+    if (confirmTickTimer) {
+      clearInterval(confirmTickTimer);
+      confirmTickTimer = null;
+    }
   }
 
   function clearRestartTimeout() {
@@ -239,15 +235,69 @@
     }
   }
 
-  function commitRestart() {
-    if (confirmRevertTimer) {
-      clearTimeout(confirmRevertTimer);
-      confirmRevertTimer = null;
+  function resetRestartButton() {
+    restartUiState = "idle";
+    clearConfirmTimers();
+    restartBtn.className = "restart-btn state-idle";
+    restartBtn.disabled = false;
+    restartBtn.removeAttribute("aria-label");
+    restartBtn.innerHTML = '<span class="restart-btn-label">Restart JARVIS</span>';
+  }
+
+  function updateConfirmLabel() {
+    const text = "Confirm restart? (" + confirmSecondsLeft + ")";
+    restartBtn.innerHTML = '<span class="restart-btn-label">' + text + "</span>";
+    restartBtn.setAttribute(
+      "aria-label",
+      "Confirm restart, " + confirmSecondsLeft + " seconds remaining"
+    );
+  }
+
+  function revertToIdle() {
+    resetRestartButton();
+    // Only touch the shared status line if we were the ones driving it
+    // (i.e. don't clobber a state pushed by SSE in the meantime).
+    if (currentState !== "restarting" && currentState !== "error") {
+      renderStatus(currentState, "");
     }
-    confirmWrapper.hidden = true;
-    idleBtn.hidden = false;
-    idleBtn.disabled = true;
-    idleBtn.innerHTML = '<span class="restart-spinner" aria-hidden="true"></span> Restarting…';
+  }
+
+  function enterConfirmMode() {
+    restartUiState = "confirm";
+    clearConfirmTimers();
+    restartBtn.className = "restart-btn state-confirm";
+    confirmSecondsLeft = CONFIRM_WINDOW_SECONDS;
+    updateConfirmLabel();
+
+    statusEl.setAttribute("aria-live", "polite");
+    statusEl.classList.remove("error");
+    statusEl.textContent =
+      "Restart requires confirmation. Click again within 4 seconds, or press Escape to cancel.";
+
+    confirmTickTimer = setInterval(() => {
+      confirmSecondsLeft -= 1;
+      if (confirmSecondsLeft <= 0) {
+        clearConfirmTimers();
+        revertToIdle();
+        return;
+      }
+      updateConfirmLabel();
+    }, 1000);
+
+    confirmRevertTimer = setTimeout(() => {
+      clearConfirmTimers();
+      revertToIdle();
+    }, CONFIRM_WINDOW_SECONDS * 1000);
+  }
+
+  function commitRestart() {
+    clearConfirmTimers();
+    restartUiState = "restarting";
+    restartBtn.className = "restart-btn state-restarting";
+    restartBtn.disabled = true;
+    restartBtn.removeAttribute("aria-label");
+    restartBtn.innerHTML =
+      '<span class="restart-spinner" aria-hidden="true"></span><span class="restart-btn-label">Restarting…</span>';
 
     optimisticRestarting = true;
     applyState("restarting", "");
@@ -266,22 +316,20 @@
     }, 15000);
   }
 
-  idleBtn.addEventListener("click", showConfirmMode);
-
-  confirmBtn.addEventListener("click", commitRestart);
-  confirmBtn.addEventListener("keydown", (evt) => {
-    if (evt.key === "Enter" || evt.key === " ") {
-      evt.preventDefault();
+  restartBtn.addEventListener("click", () => {
+    if (restartUiState === "idle") {
+      enterConfirmMode();
+    } else if (restartUiState === "confirm") {
       commitRestart();
     }
+    // No-op while "restarting" — button is disabled anyway.
   });
 
-  cancelBtn.addEventListener("click", () => {
-    if (confirmRevertTimer) {
-      clearTimeout(confirmRevertTimer);
-      confirmRevertTimer = null;
+  restartBtn.addEventListener("keydown", (evt) => {
+    if (evt.key === "Escape" && restartUiState === "confirm") {
+      evt.preventDefault();
+      clearConfirmTimers();
+      revertToIdle();
     }
-    confirmWrapper.hidden = true;
-    idleBtn.hidden = false;
   });
 })();

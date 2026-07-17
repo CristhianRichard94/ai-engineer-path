@@ -64,11 +64,9 @@
     <p id="status-text" role="status" aria-live="polite">JARVIS is offline.</p>
 
     <div id="restart-wrapper">
-      <button id="restart-idle-btn" class="restart-button" type="button">Restart JARVIS</button>
-      <div id="restart-confirm-wrapper" class="restart-actions" hidden>
-        <button id="restart-confirm-btn" class="restart-confirm" type="button">Confirm restart?</button>
-        <button id="restart-cancel-btn" class="restart-cancel" type="button">Cancel</button>
-      </div>
+      <button id="restart-btn" class="restart-btn state-idle" type="button">
+        <span class="restart-btn-label">Restart JARVIS</span>
+      </button>
     </div>
 
     <div id="transcript-panel" class="transcript-panel" aria-label="Conversation transcript">
