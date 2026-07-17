@@ -115,7 +115,7 @@
   let transcriptSeenCount = 0;
 
   function roleLabel(role) {
-    return role === "user" ? "You:" : "JARVIS:";
+    return role === "user" ? "user@jarvis:~$" : "jarvis>";
   }
 
   function renderTranscriptEntries(entries) {
