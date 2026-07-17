@@ -41,6 +41,15 @@
   transform: rotate(-30deg) translateX(45px) translateY(-3px);
 }
 
+body.state-error .svg-frame:hover svg,
+body.state-restarting .svg-frame:hover svg {
+  transform: none;
+}
+body.state-error .svg-frame:hover svg #center,
+body.state-restarting .svg-frame:hover svg #center {
+  transform: none;
+}
+
 #out2 {
   animation-name: rotate16;
   animation-duration: calc(7s * var(--ring-speed-mult));
@@ -150,9 +159,18 @@ body.state-restarting {
   --ring-anim-state: running;
 }
 
+@keyframes listen-jitter {
+  0%   { transform: scale(1.08); }
+  20%  { transform: scale(1.11); }
+  40%  { transform: scale(1.06); }
+  60%  { transform: scale(1.10); }
+  80%  { transform: scale(1.07); }
+  100% { transform: scale(1.08); }
+}
+
 body.state-listening .svg-frame {
-  transform: scale(1.08);
-  transition: transform 300ms ease;
+  animation: listen-jitter 400ms steps(5, jump-end) infinite;
+  transform-origin: center;
 }
 
 body.state-error .svg-frame {
@@ -162,6 +180,16 @@ body.state-error .svg-frame {
 @keyframes fade-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
+}
+
+@keyframes speak-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.05); opacity: 0.92; }
+}
+
+body.state-speaking .svg-frame {
+  animation: speak-pulse 900ms cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  transform-origin: center;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -175,6 +203,16 @@ body.state-error .svg-frame {
 
   body.state-error .svg-frame {
     animation: none;
+  }
+
+  body.state-speaking .svg-frame,
+  body.state-listening .svg-frame {
+    animation: none;
+    transform: scale(1.04);
+  }
+  .svg-frame:hover svg,
+  .svg-frame:hover svg #center {
+    transform: none;
   }
 }
 
