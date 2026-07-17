@@ -79,12 +79,18 @@ class IntentRouter:
         method_name = self._routes.get(intent, "do_nothing")
         fn = getattr(self, method_name, self.do_nothing)
 
-        if intent in self._DATA_INTENTS:
-            result = fn(params)
-            return result if result else reply
-        else:
-            fn(params)
-            return reply
+        # ponytail: a handler crashing on a missing/malformed param (e.g. a
+        # misparsed intent) must not take down the whole session loop -
+        # one bad turn should degrade to an apology, not kill the process.
+        try:
+            if intent in self._DATA_INTENTS:
+                result = fn(params)
+                return result if result else reply
+            else:
+                fn(params)
+                return reply
+        except Exception:
+            return "Sorry, sir, I ran into a problem with that."
 
     # ------------------------------------------------------------------
     # Pending-slot clarification
@@ -142,7 +148,10 @@ class IntentRouter:
                 proc.kill()
 
     def search_web(self, p):
-        webbrowser.open("https://google.com/search?q={}".format(p["query"]))
+        query = (p or {}).get("query", "").strip()
+        if not query:
+            return "What would you like me to search for, sir?"
+        webbrowser.open("https://google.com/search?q={}".format(query))
 
     def get_time(self, p):
         now = datetime.now()
