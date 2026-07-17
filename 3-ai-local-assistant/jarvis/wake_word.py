@@ -6,6 +6,7 @@ import sounddevice as sd
 import numpy as np
 from scipy.signal import resample_poly
 from openwakeword.model import Model
+from state import write_state
 
 # ── Model download ──────────────────────────────────────────────────────
 _BASE_URL = "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1"
@@ -83,6 +84,7 @@ class WakeWordDetector:
             q.put(indata.copy())
 
         print("[JARVIS] Waiting for wake word...")
+        write_state("wake_listening")
         with sd.InputStream(
             samplerate=self.capture_rate,
             channels=1,

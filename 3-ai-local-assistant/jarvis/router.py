@@ -4,7 +4,9 @@ router.py - Intent dispatcher for JARVIS.
 Maps intent names (from brain.py) to concrete Windows/API actions.
 """
 
+import json
 import os
+import shutil
 import subprocess
 import webbrowser
 from datetime import datetime
@@ -25,6 +27,11 @@ class IntentRouter:
         self._spotify = None
         self._audio   = AudioSwitcher()
 
+        # Single-slot pending-clarification state (documented limitation:
+        # only one outstanding slot-fill conversation at a time, no
+        # generic intent-interruption support).
+        self._pending = None
+
         # Route table: intent name -> method name on this class.
         # Using method NAMES (not bound methods) so that tests can replace
         # instance methods via attribute assignment and dispatch sees the patch.
@@ -39,6 +46,7 @@ class IntentRouter:
             "open_folder"    : "open_folder",
             "play_spotify"   : "play_spotify",
             "switch_audio"   : "switch_audio",
+            "new_project"    : "new_project",
             "goodbye"        : "goodbye",
             "chat"           : "do_nothing",
         }
@@ -50,13 +58,20 @@ class IntentRouter:
             "get_time",
             "play_spotify",
             "switch_audio",
+            "new_project",
         }
 
     # ------------------------------------------------------------------
     # Dispatch
     # ------------------------------------------------------------------
 
-    def dispatch(self, parsed):
+    def dispatch(self, parsed, raw_text=None):
+        # A prior turn left a slot unfilled (e.g. "play spotify" with no
+        # query, or the new_project wizard mid-flow) -> this turn's parsed
+        # params are treated as the answer to that slot, not a fresh intent.
+        if self._pending is not None:
+            return self._continue_pending(parsed, raw_text)
+
         intent = parsed.get("intent", "chat")
         params = parsed.get("params", {})
         reply  = parsed.get("reply", "Done, sir.")
@@ -70,6 +85,40 @@ class IntentRouter:
         else:
             fn(params)
             return reply
+
+    # ------------------------------------------------------------------
+    # Pending-slot clarification
+    # ------------------------------------------------------------------
+
+    def _continue_pending(self, parsed, raw_text=None):
+        """Route this turn's input to whichever slot is currently pending."""
+        pending = self._pending
+        intent = pending["intent"]
+
+        if intent == "switch_audio":
+            device = (parsed.get("params", {}) or {}).get("device", "").strip()
+            if not device:
+                device = (raw_text or "").strip()
+            self._pending = None
+            if not device:
+                return "I still didn't catch the audio device, sir. Let's try again."
+            return self.switch_audio({"device": device})
+
+        if intent == "play_spotify":
+            query = (parsed.get("params", {}) or {}).get("query", "").strip()
+            if not query:
+                query = (raw_text or "").strip()
+            self._pending = None
+            if not query:
+                return "I still didn't catch what to play, sir. Let's try again."
+            return self.play_spotify({"query": query})
+
+        if intent == "new_project":
+            return self._advance_new_project(parsed, raw_text)
+
+        # Unknown pending intent — clear it defensively rather than get stuck.
+        self._pending = None
+        return "Let's start over, sir."
 
     # ------------------------------------------------------------------
     # Handlers
@@ -129,6 +178,7 @@ class IntentRouter:
     def play_spotify(self, p):
         query = p.get("query", "").strip()
         if not query:
+            self._pending = {"intent": "play_spotify"}
             return "Please tell me what to play, sir."
 
         player = self._get_spotify()
@@ -149,8 +199,111 @@ class IntentRouter:
     def switch_audio(self, p):
         device = p.get("device", "").strip()
         if not device:
+            self._pending = {"intent": "switch_audio"}
             return "Please specify an audio device, sir."
         return self._audio.switch(device)
+
+    def new_project(self, p):
+        """Kick off (or resume) the multi-turn new_project wizard:
+        name -> description -> "create a GitHub repo too?" """
+        name        = (p.get("name") or "").strip()
+        description = (p.get("description") or "").strip()
+        self._pending = {
+            "intent": "new_project",
+            "step": None,
+            "name": name,
+            "description": description,
+        }
+        return self._advance_new_project_state()
+
+    def _advance_new_project_state(self):
+        """Return the next question for whichever new_project slot is empty."""
+        pending = self._pending
+        if not pending["name"]:
+            pending["step"] = "name"
+            return "What would you like to name the project, sir?"
+        if not pending["description"]:
+            pending["step"] = "description"
+            return "Give me a short description of the project, sir."
+        pending["step"] = "github"
+        return "Should I create a GitHub repository for it as well, sir?"
+
+    def _advance_new_project(self, parsed, raw_text=None):
+        """Handle the turn following a new_project question."""
+        pending = self._pending
+        step = pending.get("step")
+        answer_params = parsed.get("params", {}) or {}
+
+        if step == "name":
+            name = (answer_params.get("name") or raw_text or "").strip()
+            if not name:
+                return "Sorry, I didn't catch the project name, sir. What should I call it?"
+            pending["name"] = name
+            return self._advance_new_project_state()
+
+        if step == "description":
+            description = (answer_params.get("description") or raw_text or "").strip()
+            if not description:
+                return "Sorry, I didn't catch that, sir. Can you describe the project?"
+            pending["description"] = description
+            return self._advance_new_project_state()
+
+        if step == "github":
+            answer_text = raw_text or parsed.get("reply", "") or json.dumps(answer_params)
+            want_github = self._parse_yes_no(answer_text)
+            self._pending = None
+            return self._create_project(pending["name"], pending["description"], want_github)
+
+        # Unexpected step — bail out rather than get stuck.
+        self._pending = None
+        return "Something went wrong setting up the project, sir."
+
+    @staticmethod
+    def _parse_yes_no(text):
+        """Plain substring check for yes/no — no NLU needed for this slot."""
+        t = (text or "").lower()
+        if any(w in t for w in ("yes", "yeah", "yep", "yup", "sure", "affirmative", "please do")):
+            return True
+        if any(w in t for w in ("no", "nope", "nah", "negative", "don't", "do not")):
+            return False
+        return False  # unclear answer -> safest default is to skip GitHub
+
+    def _create_project(self, name, description, want_github):
+        projects_dir = os.path.expanduser(os.getenv("JARVIS_PROJECTS_DIR", "~/projects"))
+        folder_path  = os.path.join(projects_dir, name)
+
+        try:
+            os.makedirs(folder_path, exist_ok=True)
+        except OSError as e:
+            print("[NEW_PROJECT] Failed to create folder: {}".format(e))
+            return "I couldn't create the project folder, sir: {}".format(e)
+
+        if not want_github:
+            return "Project '{}' created at {}, sir.".format(name, folder_path)
+
+        if not shutil.which("gh"):
+            return (
+                "Project '{}' created at {}, sir. GitHub CLI isn't available, "
+                "so I skipped repository creation.".format(name, folder_path)
+            )
+
+        try:
+            subprocess.run(
+                [
+                    "gh", "repo", "create", name,
+                    "--description", description,
+                    "--private", "--source=.", "--remote=origin",
+                ],
+                cwd=folder_path,
+                check=True,
+            )
+            return "Project '{}' created at {} with a GitHub repository, sir.".format(name, folder_path)
+        except Exception as e:
+            print("[NEW_PROJECT] GitHub repo creation failed: {}".format(e))
+            return (
+                "Project '{}' created at {}, sir, but I couldn't set up "
+                "the GitHub repository.".format(name, folder_path)
+            )
 
     def goodbye(self, p):
         # Signals main.py to end the current session; reply comes from GPT

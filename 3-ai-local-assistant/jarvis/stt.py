@@ -5,6 +5,7 @@ import sounddevice as sd
 import numpy as np
 from scipy.signal import resample_poly
 import io, wave
+from state import write_state
 
 class SpeechTranscriber:
     def __init__(self, api_key: str):
@@ -33,6 +34,7 @@ class SpeechTranscriber:
         # WDM-KS-only input devices (common on Windows) - use InputStream
         # callback instead, same fix as wake_word.py.
         print("[JARVIS] Listening...")
+        write_state("listening")
         frames = []
         with sd.InputStream(
             samplerate=self.capture_rate,
@@ -63,6 +65,8 @@ class SpeechTranscriber:
             )
             text = result.text.strip()
             print(f"[STT] Heard: {text}")
+            if text:
+                write_state("thinking", detail=text)
             return text if text else None
         except Exception as e:
             print(f"[STT] Error: {e}")

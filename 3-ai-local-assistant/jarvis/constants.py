@@ -24,6 +24,7 @@ Available intents:
 - open_folder    : { "path": "..." }
 - play_spotify   : { "query": "<song name, artist, or both>" }
 - switch_audio   : { "device": "speaker|headphones" }
+- new_project    : { "name": "<project name>", "description": "<short description>" }
 - goodbye        : {}
 - chat           : {}
 
@@ -31,5 +32,6 @@ Examples:
   "play Bohemian Rhapsody"       -> play_spotify { "query": "Bohemian Rhapsody" }
   "play something by Daft Punk"  -> play_spotify { "query": "Daft Punk" }
   "switch to headphones"         -> switch_audio { "device": "headphones" }
+  "start a new project"          -> new_project { "name": "", "description": "" }
   "goodbye / that's all / bye"   -> goodbye {}
 """
