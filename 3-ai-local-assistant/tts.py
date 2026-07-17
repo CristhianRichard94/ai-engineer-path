@@ -149,6 +149,8 @@ class Speaker:
     def _pyttsx3_run(self):
         """Single thread that owns the pyttsx3 engine."""
         import pyttsx3
+        import tempfile
+
         engine = pyttsx3.init()
         engine.setProperty('rate', 165)
         engine.setProperty('volume', 1.0)
@@ -164,8 +166,19 @@ class Speaker:
                 break
             text, done_event = item
             try:
-                engine.say(text)
+                # ponytail: engine.say()+runAndWait() plays through SAPI5's
+                # own device selection, which can silently differ from the
+                # sounddevice default output (e.g. picks internal speakers
+                # while a Bluetooth headset is the actual default) - render
+                # to a temp WAV and play it through sounddevice instead, so
+                # it always uses the same output device as every other TTS
+                # backend in this file.
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                    tmp_path = f.name
+                engine.save_to_file(text, tmp_path)
                 engine.runAndWait()
+                self._play_wav_bytes(open(tmp_path, "rb").read())
+                os.remove(tmp_path)
             except Exception as exc:
                 print("[TTS] pyttsx3 error: {}".format(exc))
             if done_event is not None:
