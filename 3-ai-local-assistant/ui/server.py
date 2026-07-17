@@ -26,7 +26,7 @@ _REPO_ROOT = os.path.abspath(os.path.join(_UI_DIR, os.pardir))
 _MAIN_PY = os.path.join(_REPO_ROOT, "main.py")
 
 sys.path.append(os.path.join(_REPO_ROOT, "jarvis"))
-from state import STATE_FILE, write_state  # noqa: E402
+from state import STATE_FILE, TRANSCRIPT_FILE, write_state  # noqa: E402
 
 app = Flask(__name__, static_folder=None)
 
@@ -35,6 +35,7 @@ PORT = int(os.getenv("JARVIS_UI_PORT", "5151"))
 _STALE_SECONDS = 10
 _POLL_INTERVAL = 0.15  # ~6-7x/sec
 _RESTART_TERMINATE_TIMEOUT = 5
+_TRANSCRIPT_MAX_ENTRIES = 50
 
 
 # ── State reading ─────────────────────────────────────────────────────
@@ -71,6 +72,32 @@ def _read_state():
     return data
 
 
+def _read_transcript(limit=_TRANSCRIPT_MAX_ENTRIES):
+    """Return the last `limit` transcript entries, oldest first.
+
+    Tolerates a missing file (no conversation yet) and skips any malformed
+    lines rather than failing the whole request.
+    """
+    if not os.path.exists(TRANSCRIPT_FILE):
+        return []
+
+    entries = []
+    try:
+        with open(TRANSCRIPT_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    except OSError:
+        return []
+
+    return entries[-limit:]
+
+
 # ── Routes ─────────────────────────────────────────────────────────────
 
 @app.route("/")
@@ -105,6 +132,11 @@ def state_stream():
             time.sleep(_POLL_INTERVAL)
 
     return Response(generate(), mimetype="text/event-stream")
+
+
+@app.route("/transcript")
+def transcript():
+    return jsonify(_read_transcript())
 
 
 @app.route("/restart", methods=["POST"])

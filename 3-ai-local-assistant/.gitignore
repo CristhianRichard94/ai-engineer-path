@@ -4,3 +4,4 @@ venv/
 .env
 state.json
 state.json.tmp
+transcript.jsonl

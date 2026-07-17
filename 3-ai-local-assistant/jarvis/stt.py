@@ -5,7 +5,7 @@ import sounddevice as sd
 import numpy as np
 from scipy.signal import resample_poly
 import io, wave
-from state import write_state
+from state import write_state, append_transcript
 
 class SpeechTranscriber:
     def __init__(self, api_key: str):
@@ -67,6 +67,7 @@ class SpeechTranscriber:
             print(f"[STT] Heard: {text}")
             if text:
                 write_state("thinking", detail=text)
+                append_transcript("user", text)
             return text if text else None
         except Exception as e:
             print(f"[STT] Error: {e}")
