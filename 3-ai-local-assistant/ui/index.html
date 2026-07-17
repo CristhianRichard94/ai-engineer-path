@@ -59,6 +59,8 @@
         <path fill="#00FFFF" d="M172 166.445C175.068 166.445 177.556 168.932 177.556 172C177.556 175.068 175.068 177.556 172 177.556C168.932 177.556 166.444 175.068 166.444 172C166.444 168.932 168.932 166.445 172 166.445ZM172 177.021C174.773 177.021 177.021 174.773 177.021 172C177.021 169.227 174.773 166.979 172 166.979C169.227 166.979 166.979 169.227 166.979 172C166.979 174.773 169.227 177.021 172 177.021Z" id="center"></path>
       </svg>
 
+      <div id="voice-orb" class="voice-orb" aria-hidden="true"></div>
+
     </div>
 
     <p id="status-text" role="status" aria-live="polite">JARVIS is offline.</p>
@@ -70,6 +72,12 @@
     </div>
 
     <div id="transcript-panel" class="transcript-panel" aria-label="Conversation transcript">
+      <div class="terminal-titlebar" aria-hidden="true">
+        <span class="terminal-dot terminal-dot-red"></span>
+        <span class="terminal-dot terminal-dot-amber"></span>
+        <span class="terminal-dot terminal-dot-green"></span>
+        <span class="terminal-title">jarvis@localhost:~</span>
+      </div>
       <div id="transcript-log" class="transcript-log" role="log" aria-live="polite"></div>
     </div>
 
