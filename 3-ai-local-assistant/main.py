@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "jarvis"))
 
-from wake_word import WakeWordDetector
+from wake_word import WakeWordDetector, NoMicrophoneError
 from stt      import SpeechTranscriber
 from tts      import Speaker
 from brain    import JarvisBrain
@@ -62,7 +62,14 @@ def run_session(stt, brain, router, speaker):
 
 
 def main():
-    wake   = WakeWordDetector()
+    try:
+        wake = WakeWordDetector()
+    except NoMicrophoneError as e:
+        message = str(e)
+        write_state("error", detail=message)
+        print(message)
+        sys.exit(1)
+
     stt    = SpeechTranscriber(api_key=os.getenv("OPENAI_API_KEY"))
     brain  = JarvisBrain(api_key=os.getenv("OPENAI_API_KEY"))
     router = IntentRouter()
