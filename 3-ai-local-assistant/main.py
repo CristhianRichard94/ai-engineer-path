@@ -15,6 +15,7 @@ Session flow:
 
 import os
 import sys
+import time
 from dotenv import load_dotenv
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "jarvis"))
@@ -37,6 +38,7 @@ def run_session(stt, brain, router, speaker):
         # ── Listen ──────────────────────────────────────────────────
         command = stt.capture_and_transcribe()
         if not command:
+            time.sleep(0.4)
             speaker.speak("I didn't catch that, sir.")
             continue
 
@@ -48,6 +50,10 @@ def run_session(stt, brain, router, speaker):
         reply = router.dispatch(parsed, raw_text=command)
 
         # ── Speak ───────────────────────────────────────────────────
+        # ponytail: Bluetooth headsets drop from A2DP (playback) to HFP
+        # (mic) profile while capturing, then need a beat to switch back -
+        # speaking immediately after listen can get silently swallowed.
+        time.sleep(0.4)
         speaker.speak(reply)
 
         # ── Session end? ────────────────────────────────────────────
@@ -68,6 +74,7 @@ def main():
         while True:
             # ── Wait for "Hey JARVIS" ────────────────────────────
             wake.listen_for_wake()
+            time.sleep(0.4)
             speaker.speak("Yes, sir.")
 
             # ── Conversation session ─────────────────────────────
