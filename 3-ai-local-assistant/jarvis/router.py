@@ -16,6 +16,7 @@ import requests
 
 from spotify_player import SpotifyPlayer, SpotifyAuthError
 from audio_switcher import AudioSwitcher
+from state import append_claude_audit
 
 
 class IntentRouter:
@@ -47,6 +48,8 @@ class IntentRouter:
             "play_spotify"   : "play_spotify",
             "switch_audio"   : "switch_audio",
             "new_project"    : "new_project",
+            "ask_claude"     : "ask_claude",
+            "daily_task_reminder": "daily_task_reminder",
             "goodbye"        : "goodbye",
             "chat"           : "do_nothing",
         }
@@ -59,6 +62,8 @@ class IntentRouter:
             "play_spotify",
             "switch_audio",
             "new_project",
+            "ask_claude",
+            "daily_task_reminder",
         }
 
     # ------------------------------------------------------------------
@@ -118,6 +123,31 @@ class IntentRouter:
             if not query:
                 return "I still didn't catch what to play, sir. Let's try again."
             return self.play_spotify({"query": query})
+
+        if intent == "ask_claude":
+            query = (parsed.get("params", {}) or {}).get("query", "").strip()
+            if not query:
+                query = (raw_text or "").strip()
+            self._pending = None
+            if not query:
+                return "I still didn't catch the question, sir. Let's try again."
+            return self.ask_claude({"query": query})
+
+        if intent == "ask_claude_confirm":
+            query = pending["query"]
+            self._pending = None
+            if self._is_affirmative(parsed, raw_text):
+                return self._call_claude_cli(query)
+            return "Okay, cancelled, sir."
+
+        if intent == "daily_task_reminder_confirm":
+            self._pending = None
+            if self._is_affirmative(parsed, raw_text):
+                return self._call_claude_cli(
+                    self._DAILY_TASK_PROMPT,
+                    allowed_tools=["mcp__project-tracker__list_open_tasks"],
+                )
+            return "Okay, cancelled, sir."
 
         if intent == "new_project":
             return self._advance_new_project(parsed, raw_text)
@@ -211,6 +241,109 @@ class IntentRouter:
             self._pending = {"intent": "switch_audio"}
             return "Please specify an audio device, sir."
         return self._audio.switch(device)
+
+    # Rewritten for one-shot voice use: `claude -p` is non-interactive and
+    # exits after a single response, so the prompt must not imply a live
+    # back-and-forth ("ask me... wait for my answer") that can never happen.
+    _DAILY_TASK_PROMPT = (
+        "Use the mcp__project-tracker__list_open_tasks tool to get open tasks. "
+        "Summarize the open tasks (or suggest 2-3 new project ideas if empty/stale) "
+        "as your final answer — this is a one-shot request, don't wait for further "
+        "input."
+    )
+
+    _CLAUDE_REPLY_LIMIT = 800
+
+    # Words that count as an affirmative answer to a pending confirmation.
+    _AFFIRMATIVE_WORDS = ("yes", "yeah", "yep", "yup", "sure", "affirmative",
+                          "confirm", "go ahead", "do it")
+
+    @classmethod
+    def _is_affirmative(cls, parsed, raw_text=None):
+        """Check whether the user's turn (raw text or parsed params/reply)
+        reads as an affirmative confirmation."""
+        candidates = []
+        if raw_text:
+            candidates.append(raw_text)
+        params = (parsed or {}).get("params", {}) or {}
+        for v in params.values():
+            if isinstance(v, str):
+                candidates.append(v)
+        reply = (parsed or {}).get("reply", "")
+        if reply:
+            candidates.append(reply)
+        text = " ".join(candidates).lower()
+        return any(word in text for word in cls._AFFIRMATIVE_WORDS)
+
+    def ask_claude(self, p):
+        query = (p or {}).get("query", "").strip()
+        if not query:
+            self._pending = {"intent": "ask_claude"}
+            return "What would you like to ask Claude, sir?"
+        # Confirmation gate: the query comes from voice/ambient audio -> STT
+        # -> intent parser -> straight into an agentic CLI with real
+        # file-system access. Never dispatch without an explicit "yes".
+        self._pending = {"intent": "ask_claude_confirm", "query": query}
+        return "You want me to ask Claude: '{}'. Say yes to confirm, sir.".format(query)
+
+    def daily_task_reminder(self, p):
+        # Same confirmation gate as ask_claude - this also invokes the
+        # agentic CLI (with project-tracker MCP tool access).
+        self._pending = {"intent": "daily_task_reminder_confirm"}
+        return "Want me to check today's tasks with Claude, sir? Say yes to confirm."
+
+    def _call_claude_cli(self, prompt, allowed_tools=None):
+        """Run the Claude Code CLI non-interactively and return a spoken reply.
+
+        List-form argv (no shell=True) — the prompt is passed as a single
+        argument, so there is no shell-injection risk regardless of content.
+
+        Runs in `--permission-mode plan` (read-only planning, no file/tool
+        mutations) rather than trusting the user's ambient global Claude
+        Code permission config, since this call path is triggered by
+        unattended voice/ambient audio. Callers that need a specific MCP
+        tool (e.g. daily_task_reminder's project-tracker read tool) can
+        pass `allowed_tools` to additionally scope via --allowedTools.
+        Every invocation is recorded, full and untruncated, to
+        claude_cli_audit.jsonl via state.append_claude_audit for
+        after-the-fact review.
+        """
+        if not shutil.which("claude"):
+            return "Claude Code isn't installed, sir."
+
+        cmd = ["claude", "-p", prompt, "--permission-mode", "plan"]
+        if allowed_tools:
+            cmd += ["--allowedTools"] + list(allowed_tools)
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=90,
+                cwd=os.path.expanduser("~"),
+            )
+        except subprocess.TimeoutExpired:
+            append_claude_audit(prompt, "", "TimeoutExpired after 90s", None)
+            return "Sorry, sir, I couldn't reach Claude for that."
+        except Exception as e:
+            print("[CLAUDE_CLI] Error: {}".format(e))
+            append_claude_audit(prompt, "", str(e), None)
+            return "Sorry, sir, I couldn't reach Claude for that."
+
+        append_claude_audit(prompt, result.stdout, result.stderr, result.returncode)
+
+        if result.returncode != 0:
+            print("[CLAUDE_CLI] Non-zero exit ({}): {}".format(
+                result.returncode, result.stderr))
+            return "Sorry, sir, I couldn't reach Claude for that."
+
+        reply = result.stdout.strip()
+        if not reply:
+            return "Claude didn't return anything, sir."
+        if len(reply) > self._CLAUDE_REPLY_LIMIT:
+            reply = reply[:self._CLAUDE_REPLY_LIMIT].rstrip() + "...(truncated)"
+        return reply
 
     def new_project(self, p):
         """Kick off (or resume) the multi-turn new_project wizard:

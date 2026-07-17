@@ -371,5 +371,198 @@ class TestSwitchAudio(unittest.TestCase):
         reply = self.router.switch_audio({})
         self.assertIn("specify", reply.lower())
 
+
+# ════════════════════════════════════════════════════════════════════════
+# ask_claude / daily_task_reminder / _call_claude_cli
+# ════════════════════════════════════════════════════════════════════════
+
+class TestClaudeCli(unittest.TestCase):
+
+    def setUp(self):
+        self.router = _make_router()
+
+    def test_ask_claude_empty_query_sets_pending_and_prompts(self):
+        reply = self.router.ask_claude({"query": ""})
+        self.assertIn("ask", reply.lower())
+        self.assertEqual(self.router._pending, {"intent": "ask_claude"})
+
+    def test_ask_claude_with_query_sets_confirm_pending_not_dispatch(self):
+        # Security gate: a query must never hit the CLI without an explicit
+        # "yes" from the user first.
+        reply = self.router.ask_claude({"query": "summarize the repo"})
+        self.assertEqual(
+            self.router._pending,
+            {"intent": "ask_claude_confirm", "query": "summarize the repo"},
+        )
+        self.assertIn("summarize the repo", reply)
+        self.assertIn("confirm", reply.lower())
+
+    def test_daily_task_reminder_sets_confirm_pending_not_dispatch(self):
+        reply = self.router.daily_task_reminder({})
+        self.assertEqual(self.router._pending, {"intent": "daily_task_reminder_confirm"})
+        self.assertIn("confirm", reply.lower())
+
+    @patch("router.shutil.which", return_value=None)
+    def test_call_claude_cli_missing_binary_returns_graceful_reply(self, mock_which):
+        reply = self.router._call_claude_cli("hello")
+        self.assertIn("isn't installed", reply.lower())
+
+    @patch("router.shutil.which", return_value="C:\\fake\\claude.exe")
+    @patch("router.subprocess.run", side_effect=router_module.subprocess.TimeoutExpired(cmd="claude", timeout=90))
+    def test_call_claude_cli_timeout_returns_graceful_reply(self, mock_run, mock_which):
+        reply = self.router._call_claude_cli("hello")
+        self.assertIn("couldn't reach claude", reply.lower())
+
+    @patch("router.shutil.which", return_value="C:\\fake\\claude.exe")
+    @patch("router.subprocess.run", side_effect=Exception("boom"))
+    def test_call_claude_cli_unexpected_exception_returns_graceful_reply(self, mock_run, mock_which):
+        reply = self.router._call_claude_cli("hello")
+        self.assertIn("couldn't reach claude", reply.lower())
+
+    @patch("router.shutil.which", return_value="C:\\fake\\claude.exe")
+    @patch("router.subprocess.run")
+    def test_call_claude_cli_nonzero_returncode_returns_graceful_reply(self, mock_run, mock_which):
+        mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="oops")
+        reply = self.router._call_claude_cli("hello")
+        self.assertIn("couldn't reach claude", reply.lower())
+
+    @patch("router.shutil.which", return_value="C:\\fake\\claude.exe")
+    @patch("router.subprocess.run")
+    def test_call_claude_cli_success_truncates_long_output(self, mock_run, mock_which):
+        mock_run.return_value = MagicMock(returncode=0, stdout="x" * 2000, stderr="")
+        reply = self.router._call_claude_cli("hello")
+        self.assertTrue(reply.endswith("...(truncated)"))
+        self.assertLessEqual(len(reply), 800 + len("...(truncated)"))
+
+    @patch("router.shutil.which", return_value="C:\\fake\\claude.exe")
+    @patch("router.subprocess.run")
+    def test_call_claude_cli_uses_plan_permission_mode(self, mock_run, mock_which):
+        mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
+        self.router._call_claude_cli("hello")
+        args, kwargs = mock_run.call_args
+        cmd = args[0]
+        self.assertIn("--permission-mode", cmd)
+        self.assertEqual(cmd[cmd.index("--permission-mode") + 1], "plan")
+
+    @patch("router.shutil.which", return_value="C:\\fake\\claude.exe")
+    @patch("router.subprocess.run")
+    def test_call_claude_cli_applies_allowed_tools(self, mock_run, mock_which):
+        mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
+        self.router._call_claude_cli(
+            "hello", allowed_tools=["mcp__project-tracker__list_open_tasks"]
+        )
+        args, kwargs = mock_run.call_args
+        cmd = args[0]
+        self.assertIn("--allowedTools", cmd)
+        self.assertIn("mcp__project-tracker__list_open_tasks", cmd)
+
+    @patch("router.append_claude_audit")
+    @patch("router.shutil.which", return_value="C:\\fake\\claude.exe")
+    @patch("router.subprocess.run")
+    def test_call_claude_cli_writes_audit_log_on_success(self, mock_run, mock_which, mock_audit):
+        mock_run.return_value = MagicMock(returncode=0, stdout="the result", stderr="")
+        self.router._call_claude_cli("hello")
+        mock_audit.assert_called_once_with("hello", "the result", "", 0)
+
+    @patch("router.append_claude_audit")
+    @patch("router.shutil.which", return_value="C:\\fake\\claude.exe")
+    @patch("router.subprocess.run", side_effect=router_module.subprocess.TimeoutExpired(cmd="claude", timeout=90))
+    def test_call_claude_cli_writes_audit_log_on_timeout(self, mock_run, mock_which, mock_audit):
+        self.router._call_claude_cli("hello")
+        mock_audit.assert_called_once()
+        args, kwargs = mock_audit.call_args
+        self.assertEqual(args[0], "hello")
+        self.assertIsNone(args[3])
+
+    @patch("router.shutil.which", return_value="C:\\fake\\claude.exe")
+    @patch("router.subprocess.run")
+    def test_daily_task_reminder_prompt_is_one_shot(self, mock_run, mock_which):
+        mock_run.return_value = MagicMock(returncode=0, stdout="What's on the docket, sir?", stderr="")
+        self.router._pending = {"intent": "daily_task_reminder_confirm"}
+        reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes")
+        self.assertEqual(reply, "What's on the docket, sir?")
+        args, kwargs = mock_run.call_args
+        prompt = args[0][2]
+        self.assertIn("list_open_tasks", prompt)
+        self.assertIn("one-shot", prompt.lower())
+        self.assertNotIn("wait for my answer", prompt.lower())
+
+    # ── Confirmation gate: ask_claude ───────────────────────────────────
+
+    def test_ask_claude_confirm_pending_affirmative_dispatches_cli(self):
+        self.router._pending = {"intent": "ask_claude_confirm", "query": "summarize the repo"}
+        with patch.object(self.router, "_call_claude_cli", return_value="Done, sir.") as mock_cli:
+            reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes")
+        mock_cli.assert_called_once_with("summarize the repo")
+        self.assertEqual(reply, "Done, sir.")
+        self.assertIsNone(self.router._pending)
+
+    def test_ask_claude_confirm_pending_negative_cancels(self):
+        self.router._pending = {"intent": "ask_claude_confirm", "query": "summarize the repo"}
+        with patch.object(self.router, "_call_claude_cli") as mock_cli:
+            reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "no"}, raw_text="no thanks")
+        mock_cli.assert_not_called()
+        self.assertIn("cancelled", reply.lower())
+        self.assertIsNone(self.router._pending)
+
+    def test_ask_claude_confirm_pending_unrelated_reply_cancels(self):
+        # Anything that isn't an explicit affirmative must be treated as a
+        # cancel, not silently re-prompted or (worse) executed.
+        self.router._pending = {"intent": "ask_claude_confirm", "query": "summarize the repo"}
+        with patch.object(self.router, "_call_claude_cli") as mock_cli:
+            reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "what's the weather"},
+                                          raw_text="what's the weather")
+        mock_cli.assert_not_called()
+        self.assertIn("cancelled", reply.lower())
+
+    def test_ask_claude_full_dispatch_round_trip_pending_confirm_execute(self):
+        """Full round trip through dispatch(): fresh ask_claude call with a
+        query -> confirmation prompt -> user says yes -> the CLI actually
+        gets invoked. Exercises dispatch()'s pending-routing, not just the
+        handler methods directly."""
+        with patch.object(self.router, "_call_claude_cli", return_value="Repo summarized, sir.") as mock_cli:
+            first_reply = self.router.dispatch(
+                {"intent": "ask_claude", "params": {"query": "summarize the repo"}, "reply": "unused"}
+            )
+            self.assertIn("confirm", first_reply.lower())
+            self.assertIn("summarize the repo", first_reply)
+            mock_cli.assert_not_called()
+
+            second_reply = self.router.dispatch(
+                {"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes"
+            )
+
+        mock_cli.assert_called_once_with("summarize the repo")
+        self.assertEqual(second_reply, "Repo summarized, sir.")
+        self.assertIsNone(self.router._pending)
+
+    # ── Confirmation gate: daily_task_reminder ──────────────────────────
+
+    def test_daily_task_reminder_confirm_pending_affirmative_dispatches_cli(self):
+        self.router._pending = {"intent": "daily_task_reminder_confirm"}
+        with patch.object(self.router, "_call_claude_cli", return_value="Here's the docket, sir.") as mock_cli:
+            reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes")
+        mock_cli.assert_called_once_with(
+            self.router._DAILY_TASK_PROMPT,
+            allowed_tools=["mcp__project-tracker__list_open_tasks"],
+        )
+        self.assertEqual(reply, "Here's the docket, sir.")
+
+    def test_daily_task_reminder_confirm_pending_negative_cancels(self):
+        self.router._pending = {"intent": "daily_task_reminder_confirm"}
+        with patch.object(self.router, "_call_claude_cli") as mock_cli:
+            reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "no"}, raw_text="no")
+        mock_cli.assert_not_called()
+        self.assertIn("cancelled", reply.lower())
+
+
+class TestSwitchAudioDispatch(unittest.TestCase):
+
+    def setUp(self):
+        self.router = _make_router()
+
     def test_switch_audio_dispatch_routes_to_handler(self):
-        self.router._audio
+        self.router._audio.switch = MagicMock(return_value="Switched, sir.")
+        parsed = {"intent": "switch_audio", "params": {"device": "headphones"}, "reply": "unused"}
+        reply = self.router.dispatch(parsed)
+        self.assertEqual(reply, "Switched, sir.")
