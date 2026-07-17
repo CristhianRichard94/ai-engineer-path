@@ -8,6 +8,12 @@ from scipy.signal import resample_poly
 from openwakeword.model import Model
 from state import write_state
 
+
+class NoMicrophoneError(Exception):
+    """Raised when no usable input (microphone) device can be found."""
+    pass
+
+
 # ── Model download ──────────────────────────────────────────────────────
 _BASE_URL = "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1"
 _MODELS = {
@@ -63,7 +69,35 @@ class WakeWordDetector:
         # disconnected device over the mic that's actually active (e.g. a
         # connected Bluetooth headset).
         index = sd.default.device[0]
-        info  = sd.query_devices(index)
+        info = None
+        if index is not None and index >= 0:
+            try:
+                info = sd.query_devices(index)
+            except Exception as e:
+                print("[MIC] Default input device (index {}) unavailable: {}".format(index, e))
+                info = None
+
+        if info is None:
+            # No OS default input device (or querying it failed) - fall back
+            # to scanning all devices for the first usable input.
+            print("[MIC] No default input device - scanning for a usable microphone...")
+            try:
+                devices = sd.query_devices()
+            except Exception as e:
+                raise NoMicrophoneError(
+                    "No microphone found. Check your audio input device is connected."
+                ) from e
+
+            for i, dev in enumerate(devices):
+                if dev.get('max_input_channels', 0) > 0:
+                    index, info = i, dev
+                    break
+
+        if info is None:
+            raise NoMicrophoneError(
+                "No microphone found. Check your audio input device is connected."
+            )
+
         print("[MIC] Using -> index {}: {} ({} Hz)".format(
             index, info['name'], info['default_samplerate']))
         return index, info['default_samplerate']
