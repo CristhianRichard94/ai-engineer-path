@@ -20,6 +20,7 @@ import sys
 import io
 import queue
 import threading
+import time
 
 import numpy as np
 import sounddevice as sd
@@ -102,7 +103,7 @@ class Speaker:
                 return False
 
             self._fish_ok = True
-            self._play_wav_bytes(resp.content)
+            self._play_wav_bytes(resp.content, text)
             return True
 
         except Exception as exc:
@@ -129,9 +130,8 @@ class Speaker:
                 model_id="eleven_turbo_v2_5",
             )
             pcm   = b"".join(audio_gen)
-            audio = np.frombuffer(pcm, dtype=np.int16)
-            sd.play(audio, samplerate=22050)
-            sd.wait()
+            audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
+            self._play_and_report_amplitude(audio, 22050, text)
             return True
         except Exception as exc:
             print("[TTS] ElevenLabs error: {}".format(exc))
@@ -177,7 +177,7 @@ class Speaker:
                     tmp_path = f.name
                 engine.save_to_file(text, tmp_path)
                 engine.runAndWait()
-                self._play_wav_bytes(open(tmp_path, "rb").read())
+                self._play_wav_bytes(open(tmp_path, "rb").read(), text)
                 os.remove(tmp_path)
             except Exception as exc:
                 print("[TTS] pyttsx3 error: {}".format(exc))
@@ -188,7 +188,7 @@ class Speaker:
     # Audio playback helpers
     # ------------------------------------------------------------------
 
-    def _play_wav_bytes(self, wav_bytes: bytes):
+    def _play_wav_bytes(self, wav_bytes: bytes, text: str = ""):
         """Decode WAV bytes and play via sounddevice (uses scipy, already installed)."""
         from scipy.io import wavfile
         rate, data = wavfile.read(io.BytesIO(wav_bytes))
@@ -199,8 +199,53 @@ class Speaker:
             audio = data.astype(np.float32) / 2147483648.0
         else:
             audio = data.astype(np.float32)
+        self._play_and_report_amplitude(audio, rate, text)
+
+    def _play_and_report_amplitude(self, audio: np.ndarray, rate: int, text: str):
+        """Play `audio` (float32, mono or multi-channel, already normalised
+        to roughly [-1, 1]) via sounddevice, while periodically writing the
+        current RMS amplitude of the audio under the playhead to state.json
+        so the control UI can drive an audio-reactive orb. Non-blocking
+        `sd.play()` + a polling loop, then `sd.wait()` to fully drain.
+        """
+        # Collapse to mono for amplitude purposes if multi-channel.
+        mono = audio if audio.ndim == 1 else audio.mean(axis=1)
+        total_samples = len(mono)
+        window = max(1, int(rate * 0.05))  # ~50ms RMS window
+        poll_interval = 1 / 15  # ~15Hz amplitude updates
+
         sd.play(audio, samplerate=rate)
-        sd.wait()
+        start = time.monotonic()
+        try:
+            while True:
+                stream = sd.get_stream()
+                active = stream is not None and stream.active
+                elapsed = time.monotonic() - start
+                if not active or elapsed * rate >= total_samples:
+                    break
+
+                idx = int(elapsed * rate)
+                window_slice = mono[idx:idx + window]
+                if len(window_slice) > 0:
+                    rms = float(np.sqrt(np.mean(np.square(window_slice))))
+                    rms = rms if np.isfinite(rms) else 0.0
+                    amplitude = max(0.0, min(1.0, rms))
+                    write_state("speaking", detail=text, amplitude=amplitude)
+
+                time.sleep(poll_interval)
+            sd.wait()
+        except Exception:
+            # Playback failed mid-stream (device disconnect, driver error,
+            # etc.) - do not leave state.json frozen at "speaking" with a
+            # stale amplitude. Move off "speaking" before propagating the
+            # error so callers' fallback chain / error handling still runs.
+            write_state("error", detail="TTS playback failed")
+            raise
+        else:
+            # Playback finished normally - drop the amplitude key so the
+            # SSE payload cleanly reflects "no longer actively playing"
+            # instead of lingering at the last polled value.
+            write_state("speaking", detail=text)
 
     # ------------------------------------------------------------------
     # Startup info

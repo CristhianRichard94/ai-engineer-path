@@ -19,12 +19,17 @@ TRANSCRIPT_FILE = os.path.join(_REPO_ROOT, "transcript.jsonl")
 CLAUDE_AUDIT_FILE = os.path.join(_REPO_ROOT, "claude_cli_audit.jsonl")
 
 
-def write_state(state: str, detail: str = ""):
+def write_state(state: str, detail: str = "", amplitude: float = None):
     """Atomically write the current state to state.json.
 
     state: one of off | wake_listening | listening | thinking | speaking |
            error | restarting
     detail: optional extra text (e.g. transcribed command, error message)
+    amplitude: optional 0.0-1.0 RMS amplitude of the audio currently being
+               played back (only meaningful while state == "speaking").
+               Omitted from the payload entirely when None, keeping the
+               payload minimal/backward-compatible for all other states
+               and callers that never pass it.
     """
     payload = {
         "state": state,
@@ -32,6 +37,8 @@ def write_state(state: str, detail: str = ""):
         "ts": time.time(),
         "pid": os.getpid(),
     }
+    if amplitude is not None:
+        payload["amplitude"] = amplitude
 
     tmp_path = STATE_FILE + ".tmp"
     try:
