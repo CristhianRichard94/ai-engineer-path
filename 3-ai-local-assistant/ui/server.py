@@ -2,7 +2,8 @@
 ui/server.py - Local control UI for JARVIS.
 
 Flask app that:
-  - Serves the static control UI (index.html, app.js, animation.css)
+  - Serves the built React control UI from ui/frontend/dist/
+    (run `npm install && npm run build` inside ui/frontend/ first)
   - Streams JARVIS's current lifecycle state via SSE (GET /state)
   - Restarts the JARVIS process on request (POST /restart)
 
@@ -24,6 +25,7 @@ from flask import Flask, Response, jsonify, send_from_directory
 _UI_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_UI_DIR, os.pardir))
 _MAIN_PY = os.path.join(_REPO_ROOT, "main.py")
+_DIST_DIR = os.path.join(_UI_DIR, "frontend", "dist")
 
 sys.path.append(os.path.join(_REPO_ROOT, "jarvis"))
 from state import STATE_FILE, TRANSCRIPT_FILE, write_state  # noqa: E402
@@ -99,20 +101,24 @@ def _read_transcript(limit=_TRANSCRIPT_MAX_ENTRIES):
 
 
 # ── Routes ─────────────────────────────────────────────────────────────
+#
+# The control UI is a React app (ui/frontend/), built with `npm run build`
+# into ui/frontend/dist/. This server just serves that static bundle.
 
 @app.route("/")
 def index():
-    return send_from_directory(_UI_DIR, "index.html")
+    if not os.path.exists(os.path.join(_DIST_DIR, "index.html")):
+        return (
+            "Frontend build not found. Run `npm install && npm run build` "
+            "inside ui/frontend/ first.",
+            500,
+        )
+    return send_from_directory(_DIST_DIR, "index.html")
 
 
-@app.route("/app.js")
-def app_js():
-    return send_from_directory(_UI_DIR, "app.js")
-
-
-@app.route("/animation.css")
-def animation_css():
-    return send_from_directory(_UI_DIR, "animation.css")
+@app.route("/assets/<path:filename>")
+def assets(filename):
+    return send_from_directory(os.path.join(_DIST_DIR, "assets"), filename)
 
 
 @app.route("/state")
@@ -121,11 +127,16 @@ def state_stream():
         last_payload = None
         while True:
             current = _read_state()
-            payload = json.dumps({
+            payload_dict = {
                 "state": current.get("state", "off"),
                 "detail": current.get("detail", ""),
                 "ts": current.get("ts", time.time()),
-            })
+            }
+            # Only present while state == "speaking" (see write_state()) -
+            # pass it through unchanged so the frontend can drive the orb.
+            if "amplitude" in current:
+                payload_dict["amplitude"] = current["amplitude"]
+            payload = json.dumps(payload_dict)
             if payload != last_payload:
                 last_payload = payload
                 yield "data: {}\n\n".format(payload)
