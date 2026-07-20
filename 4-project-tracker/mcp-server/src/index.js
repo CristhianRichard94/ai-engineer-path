@@ -13,10 +13,15 @@ import * as sheets from "./sheets.js";
 
 const execFileAsync = promisify(execFile);
 
-const PROJECTS_ROOT =
-  process.env.PROJECTS_ROOT || "C:\\Users\\Cristhian\\Documents\\projects";
+const PROJECTS_ROOT = process.env.PROJECTS_ROOT;
 
 async function gitStatusSummary(projectFolder) {
+  if (!PROJECTS_ROOT) {
+    throw new Error(
+      "PROJECTS_ROOT environment variable must be set to the root folder containing sibling projects."
+    );
+  }
+
   if (!projectFolder || !projectFolder.trim()) {
     throw new Error("A project folder name is required.");
   }

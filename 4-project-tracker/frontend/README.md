@@ -31,7 +31,7 @@ SITE_PASSCODE=choose-a-strong-passcode
 SESSION_SECRET=a-long-random-string-used-to-sign-the-session-cookie
 
 # Google Sheets access (same service account used by ../mcp-server)
-GOOGLE_SERVICE_ACCOUNT_EMAIL=local-sa-todo-app@genai-406713.iam.gserviceaccount.com
+GOOGLE_SERVICE_ACCOUNT_EMAIL=your-service-account@your-project.iam.gserviceaccount.com
 GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 GOOGLE_SHEETS_SHEET_NAME=Todos
 

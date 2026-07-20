@@ -39,8 +39,8 @@ npm install
 | --------------- | ------------------------------------------------------------------------- | ----------------------------------------------- |
 | `SHEET_ID`      | `1U-r0YqCZ2oXnExBnwdVUtEfVx7fgG8oSLaEG79dN23U`                           | Google Sheet ID (from its URL).                |
 | `SHEET_TAB`     | `Todos`                                                                  | Tab name inside the sheet.                     |
-| `SA_KEY_PATH`   | `C:\Users\Cristhian\Documents\projects\genai-406713-98a02f72ea99.json`  | Path to the service account JSON key.          |
-| `PROJECTS_ROOT` | `C:\Users\Cristhian\Documents\projects`                                 | Root folder containing sibling projects.       |
+| `SA_KEY_PATH`   | `/path/to/your/service-account-key.json`                                 | Path to the service account JSON key.          |
+| `PROJECTS_ROOT` | `/path/to/your/projects`                                                 | Root folder containing sibling projects.       |
 
 The service account (`client_email` in the key file) must be shared as
 **Editor** on the sheet. No extra IAM role or GCP project role needed beyond
@@ -66,12 +66,12 @@ equivalent Claude Code MCP settings file):
   "mcpServers": {
     "project-tracker": {
       "command": "node",
-      "args": ["C:\\Users\\Cristhian\\Documents\\projects\\ai-engineer-path\\4-project-tracker\\mcp-server\\src\\index.js"],
+      "args": ["/path/to/your/projects/ai-engineer-path/4-project-tracker/mcp-server/src/index.js"],
       "env": {
         "SHEET_ID": "1U-r0YqCZ2oXnExBnwdVUtEfVx7fgG8oSLaEG79dN23U",
         "SHEET_TAB": "Todos",
-        "SA_KEY_PATH": "C:\\Users\\Cristhian\\Documents\\projects\\genai-406713-98a02f72ea99.json",
-        "PROJECTS_ROOT": "C:\\Users\\Cristhian\\Documents\\projects"
+        "SA_KEY_PATH": "/path/to/your/service-account-key.json",
+        "PROJECTS_ROOT": "/path/to/your/projects"
       }
     }
   }

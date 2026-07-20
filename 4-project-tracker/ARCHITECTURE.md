@@ -9,8 +9,8 @@ Google Sheet is the single source of truth. No local DB, no sync layer.
 - Schema (header row): `id | description | status | source | created | done_date`
 - `status`: `idea` | `in_progress` | `done`
 - `source`: `manual`, `reel:<link>`, `telegram`, or other free-form tag (traceability)
-- Service account: `local-sa-todo-app@genai-406713.iam.gserviceaccount.com`, key at
-  `C:\Users\Cristhian\Documents\projects\genai-406713-98a02f72ea99.json`, shared as
+- Service account: `your-service-account@your-project.iam.gserviceaccount.com`, key at
+  `/path/to/your/service-account-key.json`, shared as
   **Editor** on the sheet.
 
 ## Components
