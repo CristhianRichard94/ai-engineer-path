@@ -7,17 +7,24 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import whisper
 
+if TYPE_CHECKING:
+    from openai import OpenAI
 
-def _require_ffmpeg():
+
+def _require_ffmpeg() -> None:
+    """Raise RuntimeError if the ffmpeg binary is not available on PATH."""
     from shutil import which
     if which("ffmpeg") is None:
         raise RuntimeError("ffmpeg not found on PATH. Install it: https://ffmpeg.org/download.html")
 
 
-def _require_openai():
+def _require_openai() -> "OpenAI":
+    """Return an authenticated OpenAI client, or raise RuntimeError if
+    OPENAI_API_KEY is not set."""
     if not os.environ.get("OPENAI_API_KEY"):
         raise RuntimeError("OPENAI_API_KEY env var not set.")
     from openai import OpenAI
@@ -25,6 +32,11 @@ def _require_openai():
 
 
 def extract_audio_from_video(video_path: Path, out_path: Path | None = None) -> Path:
+    """Extract the audio track from video_path as 16-bit PCM WAV via ffmpeg.
+
+    Returns the path to the resulting .wav file (out_path, or video_path with
+    its suffix swapped to .wav if out_path is not given).
+    """
     _require_ffmpeg()
     video_path = Path(video_path)
     out_path = Path(out_path) if out_path else video_path.with_suffix(".wav")
@@ -36,6 +48,10 @@ def extract_audio_from_video(video_path: Path, out_path: Path | None = None) -> 
 
 
 def download_instagram_reel(url: str, out_dir: Path) -> Path:
+    """Download an Instagram reel from url into out_dir via yt-dlp.
+
+    Returns the local path to the downloaded video file.
+    """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     out_template = str(out_dir / "%(id)s.%(ext)s")
@@ -48,6 +64,12 @@ def download_instagram_reel(url: str, out_dir: Path) -> Path:
 
 def transcribe_audio(audio_path: Path, engine: str = "whisper",
                       model: str = "base", language: str | None = None) -> str:
+    """Transcribe an audio file to text.
+
+    engine: "whisper" runs a local Whisper model of the given size; "openai"
+    calls the OpenAI transcription API instead. language is an optional
+    ISO-639-1 hint (e.g. "en", "es"); if None it is auto-detected.
+    """
     audio_path = Path(audio_path)
     if engine == "whisper":
         m = whisper.load_model(model)
@@ -64,6 +86,8 @@ def transcribe_audio(audio_path: Path, engine: str = "whisper",
 
 
 def _extract_frames(video_path: Path, out_dir: Path, count: int = 6) -> list[Path]:
+    """Sample roughly `count` evenly-spaced JPEG frames from video_path into
+    out_dir via ffmpeg/ffprobe, and return their sorted paths."""
     _require_ffmpeg()
     probe = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
@@ -81,6 +105,10 @@ def _extract_frames(video_path: Path, out_dir: Path, count: int = 6) -> list[Pat
 
 
 def interpret_video(video_path: Path, prompt: str | None = None) -> str:
+    """Produce one combined summary of a video's spoken transcript (via
+    OpenAI transcription) and its visual content (via sampled frames sent to
+    gpt-4o). Requires OPENAI_API_KEY. prompt overrides the default
+    instruction sent to the model."""
     import base64
     video_path = Path(video_path)
     client = _require_openai()
