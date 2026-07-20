@@ -89,7 +89,7 @@ export default function AddTodoForm({
         ref={addButtonRef}
         type="button"
         onClick={openForm}
-        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2 min-h-11 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-bold text-black dark:text-white bg-white dark:bg-black hover:bg-gray-100 dark:hover:bg-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 dark:focus-visible:ring-offset-black transition-colors duration-150"
+        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2 min-h-11 rounded-lg border border-white/10 text-sm font-bold text-white bg-white/5 backdrop-blur-sm hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 focus-visible:ring-offset-black transition-colors duration-150"
       >
         <span aria-hidden="true">+</span> Add Todo
       </button>
@@ -100,7 +100,7 @@ export default function AddTodoForm({
     <form
       onSubmit={handleSubmit}
       onKeyDown={handleKeyDown}
-      className="flex shrink-0 w-full max-w-3xl flex-col items-stretch gap-2 py-3 px-4 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-zinc-900 sm:flex-row sm:items-center sm:gap-2"
+      className="flex shrink-0 w-full max-w-3xl flex-col items-stretch gap-2 py-3 px-4 border border-white/10 rounded-lg bg-white/5 backdrop-blur-sm sm:flex-row sm:items-center sm:gap-2"
     >
       <div className="flex-1 flex flex-col gap-1">
         <label htmlFor="add-todo-description" className="sr-only">
@@ -116,10 +116,10 @@ export default function AddTodoForm({
           disabled={isSubmitting}
           aria-invalid={hasError}
           aria-describedby={hasError ? "add-todo-error" : undefined}
-          className={`flex-1 min-h-10 px-4 py-1.5 rounded-md border text-sm text-black dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus-visible:ring-2 disabled:opacity-50 disabled:cursor-not-allowed bg-white dark:bg-black ${hasError ? "border-red-500 dark:border-red-500 focus-visible:ring-red-500" : "border-gray-300 dark:border-gray-700 focus-visible:ring-blue-500"}`}
+          className={`flex-1 min-h-10 px-4 py-1.5 rounded-md border text-sm text-white placeholder-gray-500 focus:outline-none focus-visible:ring-2 disabled:opacity-50 disabled:cursor-not-allowed bg-white/5 ${hasError ? "border-red-500 focus-visible:ring-red-500" : "border-white/10 focus-visible:ring-blue-500"}`}
         />
         {errorMessage && (
-          <p id="add-todo-error" role="alert" className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
+          <p id="add-todo-error" role="alert" className="text-xs text-red-400 flex items-center gap-1">
             <span aria-hidden="true">⚠</span> {errorMessage}
           </p>
         )}
@@ -128,13 +128,13 @@ export default function AddTodoForm({
         <button
           type="submit"
           disabled={isSubmitting}
-          className="inline-flex items-center justify-center gap-2 min-h-10 px-4 py-1.5 rounded-md border border-transparent text-sm font-bold text-white bg-black dark:bg-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 dark:focus-visible:ring-offset-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150"
+          className="inline-flex items-center justify-center gap-2 min-h-10 px-4 py-1.5 rounded-md border border-transparent text-sm font-bold text-black bg-white hover:bg-gray-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 focus-visible:ring-offset-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150"
         >
           {isSubmitting ? (
             <>
               <span
                 aria-hidden="true"
-                className="h-4 w-4 rounded-full border-2 border-white/40 dark:border-black/40 border-t-white dark:border-t-black animate-spin"
+                className="h-4 w-4 rounded-full border-2 border-black/40 border-t-black animate-spin"
               />
               Adding…
             </>
@@ -147,7 +147,7 @@ export default function AddTodoForm({
           onClick={closeForm}
           disabled={isSubmitting}
           aria-label="Cancel"
-          className="inline-flex items-center justify-center min-h-10 px-4 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 text-sm font-bold text-black dark:text-white bg-white dark:bg-black hover:bg-gray-100 dark:hover:bg-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 dark:focus-visible:ring-offset-black disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150"
+          className="inline-flex items-center justify-center min-h-10 px-4 py-1.5 rounded-md border border-white/10 text-sm font-bold text-white bg-white/5 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 focus-visible:ring-offset-black disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150"
         >
           Cancel
         </button>

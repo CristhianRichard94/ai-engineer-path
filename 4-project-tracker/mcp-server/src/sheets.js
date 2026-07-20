@@ -4,15 +4,18 @@ import { GoogleAuth } from "google-auth-library";
 const SHEET_ID =
   process.env.SHEET_ID || "1U-r0YqCZ2oXnExBnwdVUtEfVx7fgG8oSLaEG79dN23U";
 const SHEET_TAB = process.env.SHEET_TAB || "Todos";
-const SA_KEY_PATH =
-  process.env.SA_KEY_PATH ||
-  "C:\\Users\\Cristhian\\Documents\\projects\\genai-406713-98a02f72ea99.json";
+const SA_KEY_PATH = process.env.SA_KEY_PATH;
 
 const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 
 let authClient = null;
 async function getAuthClient() {
   if (authClient) return authClient;
+  if (!SA_KEY_PATH) {
+    throw new Error(
+      "SA_KEY_PATH environment variable must be set to the path of the Google service account key file."
+    );
+  }
   const keyFile = JSON.parse(await readFile(SA_KEY_PATH, "utf-8"));
   const auth = new GoogleAuth({ credentials: keyFile, scopes: SCOPES });
   authClient = await auth.getClient();

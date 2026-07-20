@@ -72,9 +72,9 @@ function LoginForm() {
 
   return (
     <div className="flex flex-1 items-center justify-center font-sans px-4">
-      <div className="w-full max-w-sm bg-white dark:bg-gray-900 rounded-lg p-6 shadow-sm border border-zinc-200 dark:border-zinc-800">
-        <h1 className="text-xl font-bold text-center">Todo App</h1>
-        <p className="mt-2 mb-4 text-center text-sm text-zinc-500 dark:text-zinc-400">
+      <div className="w-full max-w-sm bg-white/5 backdrop-blur-sm rounded-lg p-6 shadow-sm border border-white/10">
+        <h1 className="text-xl font-bold text-center text-white">Todo App</h1>
+        <p className="mt-2 mb-4 text-center text-sm text-zinc-400">
           Enter the passcode to access it.
         </p>
         <form onSubmit={handleSubmit} noValidate>
@@ -93,10 +93,10 @@ function LoginForm() {
               aria-invalid={isInvalid ? "true" : undefined}
               aria-describedby={isInvalid ? "passcode-error" : undefined}
               onChange={(e) => setPasscode(e.target.value)}
-              className={`flex-1 w-full p-2 border rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900 dark:text-white disabled:opacity-60 ${
+              className={`flex-1 w-full p-2 border rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white/5 text-white disabled:opacity-60 ${
                 isInvalid
-                  ? "border-red-500 focus:ring-red-500 dark:border-red-500"
-                  : "border-gray-300 dark:border-gray-700"
+                  ? "border-red-500 focus:ring-red-500"
+                  : "border-white/10"
               }`}
             />
             <button
@@ -115,23 +115,23 @@ function LoginForm() {
           </div>
           <div className="min-h-[1.25rem] text-sm mt-1">
             {status === "error-wrong-passcode" && (
-              <p id="passcode-error" role="alert" className="text-red-600 dark:text-red-400">
+              <p id="passcode-error" role="alert" className="text-red-400">
                 Incorrect passcode. Try again.
               </p>
             )}
             {status === "error-network" && (
-              <p id="passcode-error" role="alert" className="text-red-600 dark:text-red-400">
+              <p id="passcode-error" role="alert" className="text-red-400">
                 Couldn&apos;t reach the server. Check your connection and try again.
               </p>
             )}
             {status === "error-rate-limited" && (
-              <p id="passcode-error" role="alert" className="text-red-600 dark:text-red-400">
+              <p id="passcode-error" role="alert" className="text-red-400">
                 Too many attempts. Try again in a moment.
               </p>
             )}
           </div>
         </form>
-        <p className="mt-3 text-center text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-3 text-center text-sm text-zinc-400">
           Don&apos;t have the passcode?{" "}
           <a
             href="mailto:richardcristhian94@gmail.com?subject=Passcode%20request&body=Hi%20Cristhian%2C%0A%0ACould%20you%20please%20send%20me%20the%20passcode%20for%20the%20AI%20Engineer%20Path%20app%3F%0A%0AThanks%21"

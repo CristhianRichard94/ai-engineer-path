@@ -8,37 +8,33 @@ const STATUS_OPTIONS = Object.values(TodoStatus);
 const PRIORITY_OPTIONS = ["", "1", "2", "3", "4", "5"];
 
 const PRIORITY_CLASSES: Record<string, string> = {
-    "1": "text-red-700 bg-red-50 border-red-300 dark:text-red-300 dark:bg-red-900/50 dark:border-red-600/70",
-    "2": "text-orange-700 bg-orange-50 border-orange-300 dark:text-orange-300 dark:bg-orange-900/50 dark:border-orange-600/70",
-    "3": "text-amber-700 bg-amber-50 border-amber-300 dark:text-amber-300 dark:bg-amber-900/50 dark:border-amber-600/70",
-    "4": "text-blue-700 bg-blue-50 border-blue-300 dark:text-blue-300 dark:bg-blue-900/50 dark:border-blue-600/70",
-    "5": "text-gray-700 bg-gray-100 border-gray-300 dark:text-gray-300 dark:bg-gray-700/70 dark:border-gray-500",
-    "": "text-gray-400 bg-transparent border-gray-300 border-dashed dark:text-gray-500 dark:border-gray-600",
+    "1": "text-red-300 bg-red-900/50 border-red-600/70",
+    "2": "text-orange-300 bg-orange-900/50 border-orange-600/70",
+    "3": "text-amber-300 bg-amber-900/50 border-amber-600/70",
+    "4": "text-blue-300 bg-blue-900/50 border-blue-600/70",
+    "5": "text-gray-300 bg-gray-700/70 border-gray-500",
+    "": "text-gray-500 bg-transparent border-gray-600 border-dashed",
 };
 
 const STATUS_CLASSES: Record<string, string> = {
-    [TodoStatus.InProgress]:
-        "text-amber-700 bg-amber-50 border-amber-300 dark:text-amber-300 dark:bg-amber-900/50 dark:border-amber-600/70",
-    [TodoStatus.Pending]:
-        "text-gray-700 bg-gray-100 border-gray-300 dark:text-gray-300 dark:bg-gray-700/70 dark:border-gray-500",
-    [TodoStatus.Completed]:
-        "text-green-700 bg-green-50 border-green-300 dark:text-green-300 dark:bg-green-900/50 dark:border-green-600/70",
-    [TodoStatus.Cancelled]:
-        "text-red-700 bg-red-50 border-red-300 dark:text-red-300 dark:bg-red-900/50 dark:border-red-600/70",
+    [TodoStatus.InProgress]: "text-amber-300 bg-amber-900/50 border-amber-600/70",
+    [TodoStatus.Pending]: "text-gray-300 bg-gray-700/70 border-gray-500",
+    [TodoStatus.Completed]: "text-green-300 bg-green-900/50 border-green-600/70",
+    [TodoStatus.Cancelled]: "text-red-300 bg-red-900/50 border-red-600/70",
 };
 
 const STATUS_CARD_BG: Record<string, string> = {
-    [TodoStatus.InProgress]: "bg-amber-50/60 dark:bg-amber-950/30",
-    [TodoStatus.Pending]:    "bg-white dark:bg-zinc-900",
-    [TodoStatus.Completed]:  "bg-green-50/60 dark:bg-green-950/30",
-    [TodoStatus.Cancelled]:  "bg-red-50/60 dark:bg-red-950/30",
+    [TodoStatus.InProgress]: "bg-amber-500/10",
+    [TodoStatus.Pending]:    "bg-white/5",
+    [TodoStatus.Completed]:  "bg-green-500/10",
+    [TodoStatus.Cancelled]:  "bg-red-500/10",
 };
 
 const BASE_SELECT_CLASSES =
-    "text-xs font-medium rounded-md border pl-2 pr-6 py-1 h-7 min-w-[104px] appearance-none focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 dark:focus:ring-offset-zinc-900 disabled:opacity-60 disabled:cursor-wait cursor-pointer hover:brightness-95 dark:hover:brightness-110 transition-[filter]";
+    "text-xs font-medium rounded-md border pl-2 pr-6 py-1 h-7 min-w-[104px] appearance-none focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 focus:ring-offset-zinc-900 disabled:opacity-60 disabled:cursor-wait cursor-pointer hover:brightness-110 transition-[filter]";
 
 const SPINNER_CLASSES =
-    "inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin text-gray-400 dark:text-gray-500 ml-1.5";
+    "inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin text-gray-500 ml-1.5";
 
 type TodoItemProps = {
     todo: Todo;
@@ -378,7 +374,7 @@ export default function TodoItem({ todo, source, onChange, onSavingChange }: Tod
     const doneDateShort = doneDate ? getShortDateString(doneDate) : null;
 
     return (
-        <div className={`todo ${status} group flex flex-col gap-1.5 w-full max-w-3xl px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md ${STATUS_CARD_BG[status]} hover:border-gray-400 dark:hover:border-gray-600 transition-colors`}>
+        <div className={`todo ${status} group flex flex-col gap-1.5 w-full max-w-3xl px-3 py-2 border border-white/10 rounded-lg backdrop-blur-sm ${STATUS_CARD_BG[status]} hover:border-white/20 transition-colors`}>
             {isEditingDescription ? (
                 <input
                     ref={descriptionInputRef}
@@ -391,7 +387,7 @@ export default function TodoItem({ todo, source, onChange, onSavingChange }: Tod
                     }}
                     onBlur={commitDescription}
                     onKeyDown={handleDescriptionKeyDown}
-                    className="text-sm font-medium text-black dark:text-white bg-white dark:bg-zinc-800 border border-blue-400 dark:border-blue-500 rounded px-1 -mx-1 py-0.5 focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1 min-w-0 w-full"
+                    className="text-sm font-medium text-white bg-white/10 border border-blue-500 rounded px-1 -mx-1 py-0.5 focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1 min-w-0 w-full"
                 />
             ) : (
                 <div
@@ -400,7 +396,7 @@ export default function TodoItem({ todo, source, onChange, onSavingChange }: Tod
                     aria-disabled={descriptionSaving}
                     onClick={startEditingDescription}
                     onKeyDown={handleDescriptionTriggerKeyDown}
-                    className={`text-sm font-medium text-black dark:text-white truncate rounded px-1 -mx-1 hover:bg-gray-100 dark:hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 dark:focus:ring-offset-zinc-900 flex-1 min-w-0 ${descriptionSaving ? "cursor-wait" : "cursor-text"}`}
+                    className={`text-sm font-medium text-white truncate rounded px-1 -mx-1 hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 focus:ring-offset-zinc-900 flex-1 min-w-0 ${descriptionSaving ? "cursor-wait" : "cursor-text"}`}
                 >
                     {description}
                     {showDescriptionSpinner && <span className={SPINNER_CLASSES} aria-hidden />}
@@ -415,7 +411,7 @@ export default function TodoItem({ todo, source, onChange, onSavingChange }: Tod
                             disabled={prioritySaving}
                             onChange={handlePriorityChange}
                             aria-label="Priority"
-                            className={`${BASE_SELECT_CLASSES} !min-w-[64px] ${priorityError ? "border-red-500 dark:border-red-500" : (PRIORITY_CLASSES[priority] ?? PRIORITY_CLASSES[""])}`}
+                            className={`${BASE_SELECT_CLASSES} !min-w-[64px] ${priorityError ? "border-red-500" : (PRIORITY_CLASSES[priority] ?? PRIORITY_CLASSES[""])}`}
                         >
                             {PRIORITY_OPTIONS.map((option) => (
                                 <option
@@ -445,7 +441,7 @@ export default function TodoItem({ todo, source, onChange, onSavingChange }: Tod
                             value={status}
                             disabled={statusSaving}
                             onChange={handleStatusChange}
-                            className={`${BASE_SELECT_CLASSES} ${statusError ? "border-red-500 dark:border-red-500" : STATUS_CLASSES[status]}`}
+                            className={`${BASE_SELECT_CLASSES} ${statusError ? "border-red-500" : STATUS_CLASSES[status]}`}
                         >
                             {STATUS_OPTIONS.map((option) => (
                                 <option
@@ -469,17 +465,17 @@ export default function TodoItem({ todo, source, onChange, onSavingChange }: Tod
                     {showStatusSpinner && <span className={SPINNER_CLASSES} aria-hidden />}
                 </div>
 
-                <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 shrink-0 whitespace-nowrap">
+                <div className="flex items-center gap-2 text-xs text-gray-400 shrink-0 whitespace-nowrap">
                     <span
                         title={`Source: ${todo.source}`}
-                        className="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400 truncate max-w-[80px]"
+                        className="px-1.5 py-0.5 rounded border border-gray-600 text-[10px] uppercase tracking-wide text-gray-400 truncate max-w-[80px]"
                     >
                         {todo.source}
                     </span>
                     <span title={createdISO}>{createdShort}</span>
                     {doneDateShort && (
                         <>
-                            <span className="text-gray-300 dark:text-gray-600" aria-hidden>
+                            <span className="text-gray-600" aria-hidden>
                                 ·
                             </span>
                             <span title={getISOString(doneDate as Date | string)}>{doneDateShort}</span>
@@ -489,22 +485,22 @@ export default function TodoItem({ todo, source, onChange, onSavingChange }: Tod
             </div>
 
             {priorityError && (
-                <p className="text-xs text-red-600 dark:text-red-400 mt-0.5" role="alert">
+                <p className="text-xs text-red-400 mt-0.5" role="alert">
                     {priorityError}
                 </p>
             )}
             {statusError && (
-                <p className="text-xs text-red-600 dark:text-red-400 mt-0.5" role="alert">
+                <p className="text-xs text-red-400 mt-0.5" role="alert">
                     {statusError}
                 </p>
             )}
             {descriptionDraftError && (
-                <p className="text-xs text-red-600 dark:text-red-400 mt-0.5" role="alert">
+                <p className="text-xs text-red-400 mt-0.5" role="alert">
                     {descriptionDraftError}
                 </p>
             )}
             {descriptionError && (
-                <p className="text-xs text-red-600 dark:text-red-400 mt-0.5" role="alert">
+                <p className="text-xs text-red-400 mt-0.5" role="alert">
                     {descriptionError}
                 </p>
             )}

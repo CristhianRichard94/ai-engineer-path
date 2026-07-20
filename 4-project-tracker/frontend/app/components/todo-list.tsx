@@ -18,10 +18,15 @@ function getCreatedTime(todo: Todo): number {
   return created.getTime();
 }
 
+function isDone(todo: Todo): boolean {
+  return todo.status === TodoStatus.Completed || todo.status === TodoStatus.Cancelled;
+}
+
 export default function TodoList({ source }: { source: string }) {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [showDone, setShowDone] = useState(false);
   const busyIdsRef = useRef<Set<string>>(new Set());
   // Ids of todos created locally that haven't yet been confirmed present in a
   // poll response. Protects against a poll racing the (eventually consistent)
@@ -158,11 +163,17 @@ export default function TodoList({ source }: { source: string }) {
     });
   }, [todos]);
 
+  const visibleTodos = useMemo(
+    () => (showDone ? sortedTodos : sortedTodos.filter((todo) => !isDone(todo))),
+    [sortedTodos, showDone]
+  );
+  const doneCount = sortedTodos.length - sortedTodos.filter((todo) => !isDone(todo)).length;
+
     return (
         <div className="flex flex-col w-full flex-1 min-h-0 gap-3">
           <AddTodoForm source={source} onCreated={handleCreated} />
           {fetchError && (
-            <div role="alert" className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 shrink-0">
+            <div role="alert" className="flex items-center gap-2 text-sm text-red-400 shrink-0">
               <span aria-hidden="true">⚠</span>
               <span>{fetchError}</span>
               <button
@@ -175,11 +186,30 @@ export default function TodoList({ source }: { source: string }) {
             </div>
           )}
           <ul className="flex flex-col gap-2 w-full flex-1 min-h-0 overflow-y-auto pr-1 pb-16">
-            {sortedTodos.map((todo) => (
-              <li key={todo.id} className="w-full" style={{ viewTransitionName: `todo-${todo.id}` }}>
+            {visibleTodos.map((todo) => (
+              <li key={todo.id} className="w-full todo-row" style={{ viewTransitionName: `todo-${todo.id}` }}>
                 <TodoItem todo={todo} source={source} onChange={animatedSetTodos} onSavingChange={handleSavingChange} />
               </li>
             ))}
+            {doneCount > 0 && (
+              <li className="w-full flex justify-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (typeof document !== "undefined" && "startViewTransition" in document) {
+                      (document as unknown as { startViewTransition: (cb: () => void) => void }).startViewTransition(
+                        () => setShowDone((v) => !v)
+                      );
+                    } else {
+                      setShowDone((v) => !v);
+                    }
+                  }}
+                  className="text-xs font-medium text-gray-400 hover:text-white px-3 py-1.5 rounded-full border border-white/10 bg-white/5 backdrop-blur-sm hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                >
+                  {showDone ? "Hide done" : `See ${doneCount} done`}
+                </button>
+              </li>
+            )}
           </ul>
         </div>
     );
