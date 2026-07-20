@@ -4,6 +4,12 @@
       "type": "stdio",
       "command": "node",
       "args": ["4-project-tracker/mcp-server/src/index.js"]
+    },
+    "media-interpreter": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["5-media-interpreter/mcp_server.py"],
+      "cwd": "."
     }
   }
 }
