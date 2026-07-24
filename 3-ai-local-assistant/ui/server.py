@@ -20,17 +20,46 @@ import time
 import webbrowser
 
 import psutil
-from flask import Flask, Response, jsonify, send_from_directory
+from dotenv import load_dotenv
+from flask import Flask, Response, jsonify, request, send_from_directory
 
 _UI_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_UI_DIR, os.pardir))
 _MAIN_PY = os.path.join(_REPO_ROOT, "main.py")
 _DIST_DIR = os.path.join(_UI_DIR, "frontend", "dist")
 
+load_dotenv()
+
 sys.path.append(os.path.join(_REPO_ROOT, "jarvis"))
-from state import STATE_FILE, TRANSCRIPT_FILE, write_state, request_history_reset  # noqa: E402
+from state import STATE_FILE, TRANSCRIPT_FILE, write_state, request_history_reset, append_transcript  # noqa: E402
+from brain import JarvisBrain  # noqa: E402
+from router import IntentRouter  # noqa: E402
+from vault import write_session_note  # noqa: E402
 
 app = Flask(__name__, static_folder=None)
+
+_CHAT_MESSAGE_MAX_CHARS = 4000
+
+# Lazily-created shared JarvisBrain/IntentRouter for the text-chat endpoint.
+# Both are stateful (brain.history, router's pending-slot state) and are
+# only ever touched under _chat_lock, since Flask runs threaded=True and
+# multiple /chat requests could otherwise interleave.
+_chat_lock = threading.Lock()
+_brain = None
+_router = None
+
+
+def _get_chat_components():
+    """Lazily instantiate the shared JarvisBrain/IntentRouter used by /chat.
+
+    Must only be called while holding _chat_lock.
+    """
+    global _brain, _router
+    if _brain is None:
+        _brain = JarvisBrain(api_key=os.getenv("OPENAI_API_KEY"))
+    if _router is None:
+        _router = IntentRouter()
+    return _brain, _router
 
 PORT = int(os.getenv("JARVIS_UI_PORT", "5151"))
 
@@ -148,6 +177,50 @@ def state_stream():
 @app.route("/transcript")
 def transcript():
     return jsonify(_read_transcript())
+
+
+@app.route("/chat", methods=["POST"])
+def chat():
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "invalid request body"}), 400
+
+    message = body.get("message")
+    if not isinstance(message, str) or not message.strip():
+        return jsonify({"error": "message must be a non-empty string"}), 400
+    if len(message) > _CHAT_MESSAGE_MAX_CHARS:
+        return jsonify({"error": "message is too long"}), 400
+
+    try:
+        with _chat_lock:
+            brain, router = _get_chat_components()
+            parsed = brain.think(message)
+            reply = router.dispatch(parsed, raw_text=message)
+
+            intent = parsed.get("intent", "chat") if isinstance(parsed, dict) else "chat"
+
+            # Transcript writes for this turn happen inside the same lock as
+            # think()/dispatch() so that two concurrent /chat requests can
+            # never interleave their user/assistant lines out of order.
+            # Best-effort: a write failure here must not turn a successful
+            # dispatch (which may already have caused a real side effect,
+            # e.g. opening an app) into an HTTP 500 - just log it.
+            try:
+                append_transcript("user", message)
+                append_transcript("assistant", reply)
+            except Exception as e:
+                print("[CHAT] Failed to append transcript: {}".format(e))
+    except Exception as e:
+        # Don't leak stack traces / local paths into the HTTP response body.
+        print("[CHAT] Failed to process message: {}".format(e))
+        return jsonify({"error": "failed to process message"}), 500
+
+    try:
+        write_session_note(intent, message, reply)
+    except Exception as e:
+        print("[CHAT] Failed to write session note: {}".format(e))
+
+    return jsonify({"reply": reply, "intent": intent})
 
 
 @app.route("/restart", methods=["POST"])

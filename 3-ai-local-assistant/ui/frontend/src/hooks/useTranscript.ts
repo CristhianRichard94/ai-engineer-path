@@ -60,5 +60,13 @@ export function useTranscript(paused = false) {
     seenCountRef.current = snapshot.length
   }
 
-  return { entries, clear, restore }
+  const append = (newEntries: TranscriptEntry[]) => {
+    setEntries((prev) => {
+      const next = [...prev, ...newEntries]
+      seenCountRef.current = next.length
+      return next
+    })
+  }
+
+  return { entries, clear, restore, append }
 }

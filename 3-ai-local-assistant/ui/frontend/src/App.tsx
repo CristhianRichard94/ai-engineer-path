@@ -5,6 +5,7 @@ import StatusText from './components/StatusText'
 import RestartButton from './components/RestartButton'
 import NewConversationButton from './components/NewConversationButton'
 import TranscriptPanel from './components/TranscriptPanel'
+import ChatInput from './components/ChatInput'
 import { useJarvisState } from './hooks/useJarvisState'
 import { useTranscript } from './hooks/useTranscript'
 import { useRestart } from './hooks/useRestart'
@@ -97,6 +98,8 @@ function App() {
       />
 
       <TranscriptPanel entries={entries} />
+
+      <ChatInput />
     </div>
   )
 }

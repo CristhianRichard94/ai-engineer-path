@@ -8,6 +8,7 @@ network access.
 
 import os
 import sys
+import time
 import unittest
 from unittest.mock import MagicMock, patch, call
 
@@ -384,14 +385,19 @@ class TestClaudeCli(unittest.TestCase):
     def test_ask_claude_empty_query_sets_pending_and_prompts(self):
         reply = self.router.ask_claude({"query": ""})
         self.assertIn("ask", reply.lower())
-        self.assertEqual(self.router._pending, {"intent": "ask_claude"})
+        pending = dict(self.router._pending)
+        pending.pop("_ts", None)
+        self.assertEqual(pending, {"intent": "ask_claude"})
+        self.assertIn("_ts", self.router._pending)
 
     def test_ask_claude_with_query_sets_confirm_pending_not_dispatch(self):
         # Security gate: a query must never hit the CLI without an explicit
         # "yes" from the user first.
         reply = self.router.ask_claude({"query": "summarize the repo"})
+        pending = dict(self.router._pending)
+        pending.pop("_ts", None)
         self.assertEqual(
-            self.router._pending,
+            pending,
             {"intent": "ask_claude_confirm", "query": "summarize the repo"},
         )
         self.assertIn("summarize the repo", reply)
@@ -399,7 +405,9 @@ class TestClaudeCli(unittest.TestCase):
 
     def test_daily_task_reminder_sets_confirm_pending_not_dispatch(self):
         reply = self.router.daily_task_reminder({})
-        self.assertEqual(self.router._pending, {"intent": "daily_task_reminder_confirm"})
+        pending = dict(self.router._pending)
+        pending.pop("_ts", None)
+        self.assertEqual(pending, {"intent": "daily_task_reminder_confirm"})
         self.assertIn("confirm", reply.lower())
 
     @patch("router.append_claude_audit")
@@ -512,7 +520,7 @@ class TestClaudeCli(unittest.TestCase):
     @patch("router.subprocess.run")
     def test_daily_task_reminder_prompt_is_one_shot(self, mock_run, mock_which):
         mock_run.return_value = MagicMock(returncode=0, stdout="What's on the docket, sir?", stderr="")
-        self.router._pending = {"intent": "daily_task_reminder_confirm"}
+        self.router._set_pending({"intent": "daily_task_reminder_confirm"})
         reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes")
         self.assertEqual(reply, "What's on the docket, sir?")
         args, kwargs = mock_run.call_args
@@ -524,7 +532,7 @@ class TestClaudeCli(unittest.TestCase):
     # ── Confirmation gate: ask_claude ───────────────────────────────────
 
     def test_ask_claude_confirm_pending_affirmative_dispatches_cli(self):
-        self.router._pending = {"intent": "ask_claude_confirm", "query": "summarize the repo"}
+        self.router._set_pending({"intent": "ask_claude_confirm", "query": "summarize the repo"})
         with patch.object(self.router, "_ask_claude_sdk", return_value="Done, sir.") as mock_sdk:
             reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes")
         mock_sdk.assert_called_once_with("summarize the repo")
@@ -532,7 +540,7 @@ class TestClaudeCli(unittest.TestCase):
         self.assertIsNone(self.router._pending)
 
     def test_ask_claude_confirm_pending_negative_cancels(self):
-        self.router._pending = {"intent": "ask_claude_confirm", "query": "summarize the repo"}
+        self.router._set_pending({"intent": "ask_claude_confirm", "query": "summarize the repo"})
         with patch.object(self.router, "_ask_claude_sdk") as mock_sdk:
             reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "no"}, raw_text="no thanks")
         mock_sdk.assert_not_called()
@@ -542,7 +550,7 @@ class TestClaudeCli(unittest.TestCase):
     def test_ask_claude_confirm_pending_unrelated_reply_cancels(self):
         # Anything that isn't an explicit affirmative must be treated as a
         # cancel, not silently re-prompted or (worse) executed.
-        self.router._pending = {"intent": "ask_claude_confirm", "query": "summarize the repo"}
+        self.router._set_pending({"intent": "ask_claude_confirm", "query": "summarize the repo"})
         with patch.object(self.router, "_ask_claude_sdk") as mock_sdk:
             reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "what's the weather"},
                                           raw_text="what's the weather")
@@ -573,7 +581,7 @@ class TestClaudeCli(unittest.TestCase):
     # ── Confirmation gate: daily_task_reminder ──────────────────────────
 
     def test_daily_task_reminder_confirm_pending_affirmative_dispatches_cli(self):
-        self.router._pending = {"intent": "daily_task_reminder_confirm"}
+        self.router._set_pending({"intent": "daily_task_reminder_confirm"})
         with patch.object(self.router, "_call_claude_cli", return_value="Here's the docket, sir.") as mock_cli:
             reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes")
         mock_cli.assert_called_once_with(
@@ -583,11 +591,49 @@ class TestClaudeCli(unittest.TestCase):
         self.assertEqual(reply, "Here's the docket, sir.")
 
     def test_daily_task_reminder_confirm_pending_negative_cancels(self):
-        self.router._pending = {"intent": "daily_task_reminder_confirm"}
+        self.router._set_pending({"intent": "daily_task_reminder_confirm"})
         with patch.object(self.router, "_call_claude_cli") as mock_cli:
             reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "no"}, raw_text="no")
         mock_cli.assert_not_called()
         self.assertIn("cancelled", reply.lower())
+
+    # ── Pending TTL / expiry ─────────────────────────────────────────────
+
+    def test_stale_pending_is_dropped_and_message_processed_fresh(self):
+        # A pending clarification older than _PENDING_TTL_SECONDS must be
+        # treated as abandoned: dispatch() should clear it and process the
+        # new message as a fresh intent instead of feeding it into
+        # _continue_pending as the (stale) answer.
+        self.router._pending = {
+            "intent": "ask_claude_confirm",
+            "query": "summarize the repo",
+            "_ts": time.monotonic() - (self.router._PENDING_TTL_SECONDS + 1),
+        }
+        self.router.get_time = MagicMock(return_value="It is 3:00 PM, sir.")
+
+        with patch.object(self.router, "_ask_claude_sdk") as mock_sdk:
+            reply = self.router.dispatch(
+                {"intent": "get_time", "params": {}, "reply": "unused"}
+            )
+
+        mock_sdk.assert_not_called()
+        self.router.get_time.assert_called_once()
+        self.assertEqual(reply, "It is 3:00 PM, sir.")
+        self.assertIsNone(self.router._pending)
+
+    def test_fresh_pending_within_ttl_is_still_consumed(self):
+        self.router._pending = {
+            "intent": "ask_claude_confirm",
+            "query": "summarize the repo",
+            "_ts": time.monotonic() - (self.router._PENDING_TTL_SECONDS - 1),
+        }
+        with patch.object(self.router, "_ask_claude_sdk", return_value="Done, sir.") as mock_sdk:
+            reply = self.router.dispatch(
+                {"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes"
+            )
+        mock_sdk.assert_called_once_with("summarize the repo")
+        self.assertEqual(reply, "Done, sir.")
+        self.assertIsNone(self.router._pending)
 
 
 class TestSwitchAudioDispatch(unittest.TestCase):
