@@ -56,6 +56,12 @@ SPOTIFY_CLIENT_ID=
 SPOTIFY_CLIENT_SECRET=
 SPOTIFY_REDIRECT_URI=http://localhost:8888/callback
 SPOTIFY_USE_OAUTH=false          # set true for Premium playback control
+
+# Claude (optional — powers the ask_claude intent's vault-backed SDK path)
+ANTHROPIC_API_KEY=
+JARVIS_VAULT_DIR=                # override vault location (default: ./vault)
+JARVIS_VAULT_TOP_K=4             # number of retrieved vault chunks per ask_claude call
+JARVIS_CLAUDE_MODEL=claude-sonnet-5
 ```
 
 ## Voice — Fish Speech Docker container
@@ -146,6 +152,26 @@ tools/
     references/jarvis/          # your voice samples go here
     checkpoints/                # model weights cached here after first run
 ```
+
+## Memory / Vault
+
+JARVIS keeps a local Obsidian-style vault of markdown notes at `vault/` (override
+with `JARVIS_VAULT_DIR`), used as retrieval-augmented context for the `ask_claude`
+intent:
+
+```
+vault/
+  prompts/     # auto-generated — one session note per turn, do not edit
+  projects/    # hand-written — notes about your projects
+  about-me/    # hand-written — personal info (name, role, preferences, current projects)
+```
+
+Notes are chunked and embedded locally (`sentence-transformers` + `faiss`, no
+cloud calls) into `vault/.index/`. When you ask Claude something via voice, the
+most relevant chunks from `vault/projects/` and `vault/about-me/` are retrieved
+and passed to Claude as context. The index is rebuilt at JARVIS startup and again
+whenever a session ends ("goodbye"), so new session notes become searchable in
+the next session.
 
 ## Adding a new intent
 
