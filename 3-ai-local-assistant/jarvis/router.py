@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 import webbrowser
 from datetime import datetime
 
@@ -22,6 +23,14 @@ from claude_client import ClaudeClient
 
 
 class IntentRouter:
+    # How long a pending slot-fill/confirmation stays "live" before it's
+    # treated as abandoned. Over voice this is effectively moot (tight
+    # turn-taking), but over HTTP chat a user can leave a clarifying
+    # question unanswered indefinitely; without a TTL, a later unrelated
+    # message would get silently misinterpreted as the answer to a stale
+    # pending slot.
+    _PENDING_TTL_SECONDS = 120
+
     def __init__(self):
         self.weather_key  = os.getenv("OPENWEATHER_API_KEY")
         self.default_city = os.getenv("DEFAULT_CITY", "Buenos Aires")
@@ -77,12 +86,25 @@ class IntentRouter:
     # Dispatch
     # ------------------------------------------------------------------
 
+    def _set_pending(self, pending):
+        """Set self._pending, stamping it with the current time so dispatch()
+        can expire it via _PENDING_TTL_SECONDS."""
+        pending["_ts"] = time.monotonic()
+        self._pending = pending
+
     def dispatch(self, parsed, raw_text=None):
         # A prior turn left a slot unfilled (e.g. "play spotify" with no
         # query, or the new_project wizard mid-flow) -> this turn's parsed
         # params are treated as the answer to that slot, not a fresh intent.
         if self._pending is not None:
-            return self._continue_pending(parsed, raw_text)
+            age = time.monotonic() - self._pending.get("_ts", 0)
+            if age > self._PENDING_TTL_SECONDS:
+                # Stale clarification - drop it and process this turn as a
+                # fresh intent instead of silently misinterpreting it as the
+                # answer to a question the user has moved on from.
+                self._pending = None
+            else:
+                return self._continue_pending(parsed, raw_text)
 
         intent = parsed.get("intent", "chat")
         params = parsed.get("params", {})
@@ -224,7 +246,7 @@ class IntentRouter:
     def play_spotify(self, p):
         query = p.get("query", "").strip()
         if not query:
-            self._pending = {"intent": "play_spotify"}
+            self._set_pending({"intent": "play_spotify"})
             return "Please tell me what to play, sir."
 
         player = self._get_spotify()
@@ -245,7 +267,7 @@ class IntentRouter:
     def switch_audio(self, p):
         device = p.get("device", "").strip()
         if not device:
-            self._pending = {"intent": "switch_audio"}
+            self._set_pending({"intent": "switch_audio"})
             return "Please specify an audio device, sir."
         return self._audio.switch(device)
 
@@ -285,18 +307,18 @@ class IntentRouter:
     def ask_claude(self, p):
         query = (p or {}).get("query", "").strip()
         if not query:
-            self._pending = {"intent": "ask_claude"}
+            self._set_pending({"intent": "ask_claude"})
             return "What would you like to ask Claude, sir?"
         # Confirmation gate: the query comes from voice/ambient audio -> STT
         # -> intent parser -> straight into an agentic CLI with real
         # file-system access. Never dispatch without an explicit "yes".
-        self._pending = {"intent": "ask_claude_confirm", "query": query}
+        self._set_pending({"intent": "ask_claude_confirm", "query": query})
         return "You want me to ask Claude: '{}'. Say yes to confirm, sir.".format(query)
 
     def daily_task_reminder(self, p):
         # Same confirmation gate as ask_claude - this also invokes the
         # agentic CLI (with project-tracker MCP tool access).
-        self._pending = {"intent": "daily_task_reminder_confirm"}
+        self._set_pending({"intent": "daily_task_reminder_confirm"})
         return "Want me to check today's tasks with Claude, sir? Say yes to confirm."
 
     def _ask_claude_sdk(self, query):
@@ -381,12 +403,12 @@ class IntentRouter:
         name -> description -> "create a GitHub repo too?" """
         name        = (p.get("name") or "").strip()
         description = (p.get("description") or "").strip()
-        self._pending = {
+        self._set_pending({
             "intent": "new_project",
             "step": None,
             "name": name,
             "description": description,
-        }
+        })
         return self._advance_new_project_state()
 
     def _advance_new_project_state(self):
