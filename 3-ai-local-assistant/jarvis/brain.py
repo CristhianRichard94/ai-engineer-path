@@ -1,6 +1,6 @@
 import openai, json, uuid
 
-from constants import JARVIS_SYSTEM
+from constants import JARVIS_SYSTEM, CHAT_SYSTEM
 FALLBACK_INTENTS = {"chat"}   # intents that mean "mini wasn't sure"
 
 class JarvisBrain:
@@ -33,7 +33,25 @@ class JarvisBrain:
             print("[BRAIN] Escalating to gpt-4o for ambiguous command...")
             result = self._call_model("gpt-4o", user_text)
 
+        if result.get("intent") == "chat":
+            result["reply"] = self.generate_chat_reply(user_text)
+
         return result
+
+    def generate_chat_reply(self, user_text: str) -> str:
+        """Genuine conversational reply for intent == 'chat', separate from the
+        capped 'reply' field the classification call produces (tuned for
+        <15-word action acks). Plain-text completion, reuses self.history."""
+        response = self.client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": CHAT_SYSTEM},
+                *self.history[-self.max_history:]
+            ]
+        )
+        reply = response.choices[0].message.content
+        self.history.append({"role": "assistant", "content": reply})
+        return reply
 
     def _call_model(self, model: str, user_text: str) -> dict:
         self.history.append({"role": "user", "content": user_text})

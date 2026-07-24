@@ -46,12 +46,16 @@ class JarvisBrainTests(unittest.TestCase):
 
     def test_think_returns_parsed_json_result(self):
         payload = json.dumps({"intent": "chat", "params": {}, "reply": "Hello sir."})
-        self._prepare_response(payload)
+        classify_response = self._prepare_response(payload)
+        chat_response = MagicMock()
+        chat_response.choices = [FakeChoice("It's a lovely day, sir.")]
+        self.mock_client.chat.completions.create.side_effect = [classify_response, chat_response]
 
         result = self.brain.think("hi jarvis")
 
-        self.assertEqual(result, {"intent": "chat", "params": {}, "reply": "Hello sir."})
-        self.mock_client.chat.completions.create.assert_called_once()
+        self.assertEqual(result["intent"], "chat")
+        self.assertEqual(result["reply"], "It's a lovely day, sir.")
+        self.assertEqual(self.mock_client.chat.completions.create.call_count, 2)
 
     def test_think_escalates_when_fallback_intent_and_action_keyword(self):
         first_payload = json.dumps({"intent": "chat", "params": {}, "reply": "I am not sure."})
@@ -70,6 +74,9 @@ class JarvisBrainTests(unittest.TestCase):
         second_call_model = self.mock_client.chat.completions.create.call_args_list[1][1]["model"]
         self.assertEqual(first_call_model, "gpt-4o-mini")
         self.assertEqual(second_call_model, "gpt-4o")
+        # Final resolved intent is open_app, not chat, so generate_chat_reply
+        # must not fire and there must be no third call.
+        self.assertEqual(self.mock_client.chat.completions.create.call_count, 2)
 
     def test_call_model_returns_fallback_chat_when_invalid_json(self):
         self._prepare_response("not valid json")
@@ -95,6 +102,47 @@ class JarvisBrainTests(unittest.TestCase):
         self.assertEqual(sent_messages[0]["role"], "system")
         self.assertEqual(len(sent_messages) - 1, self.brain.max_history)
         self.assertEqual(sent_messages[-1]["content"], "latest command")
+
+    def test_think_calls_generate_chat_reply_for_chat_intent(self):
+        classify_payload = json.dumps({"intent": "chat", "params": {}, "reply": "Hello sir."})
+        classify_response = self._prepare_response(classify_payload)
+        chat_response = MagicMock()
+        chat_response.choices = [FakeChoice("How can I help further, sir?")]
+        self.mock_client.chat.completions.create.side_effect = [classify_response, chat_response]
+
+        result = self.brain.think("hi jarvis")
+
+        self.assertEqual(result["reply"], "How can I help further, sir?")
+        self.assertEqual(self.mock_client.chat.completions.create.call_count, 2)
+
+        first_call_kwargs = self.mock_client.chat.completions.create.call_args_list[0][1]
+        second_call_kwargs = self.mock_client.chat.completions.create.call_args_list[1][1]
+
+        self.assertEqual(first_call_kwargs["response_format"], {"type": "json_object"})
+        self.assertEqual(first_call_kwargs["messages"][0]["content"], brain.JARVIS_SYSTEM)
+
+        self.assertNotIn("response_format", second_call_kwargs)
+        self.assertEqual(second_call_kwargs["messages"][0]["content"], brain.CHAT_SYSTEM)
+
+    def test_generate_chat_reply_appends_to_history_and_returns_content(self):
+        self.brain.history = [{"role": "user", "content": "hello there"}]
+        response = MagicMock()
+        response.choices = [FakeChoice("Good day, sir.")]
+        self.mock_client.chat.completions.create.return_value = response
+
+        reply = self.brain.generate_chat_reply("hello there")
+
+        self.assertEqual(reply, "Good day, sir.")
+        self.assertEqual(self.brain.history[-1], {"role": "assistant", "content": "Good day, sir."})
+
+    def test_think_does_not_call_generate_chat_reply_for_non_chat_intent(self):
+        payload = json.dumps({"intent": "get_time", "params": {}, "reply": "It's noon, sir."})
+        self._prepare_response(payload)
+
+        result = self.brain.think("what time is it")
+
+        self.assertEqual(result, {"intent": "get_time", "params": {}, "reply": "It's noon, sir."})
+        self.mock_client.chat.completions.create.assert_called_once()
 
     # ── conversation_id ────────────────────────────────────────────────
 
