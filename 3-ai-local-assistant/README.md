@@ -156,6 +156,6 @@ tools/
 
 ## Notes
 
-- Mic input uses the OS default recording device (`sd.default.device`) — set your mic as Windows default if wrong device is picked up
+- Mic input tries the OS default recording device (`sd.default.device`) first. If none is set (or it's invalid), JARVIS automatically scans all input devices and picks a real microphone, filtering out obvious virtual/loopback devices (e.g. "Stereo Mix", "CABLE", "Loopback", "Virtual") by name. Run `python tools/diagnose.py` to see every input device detected and which one JARVIS actually resolved to.
 - Wake word model (`hey_jarvis_v0.1.onnx`) auto-downloads on first run
 - Spotify OAuth mode requires Spotify Premium and stores a cache at `.spotify_cache`

@@ -29,9 +29,8 @@ from stt import SpeechTranscriber
 
 def _make_transcriber(default_index=7, device_info=None):
     device_info = device_info or {"name": "x", "default_samplerate": 48000.0}
-    with patch("stt.openai"), patch("stt.sd") as mock_sd:
-        mock_sd.default.device = (default_index, default_index)
-        mock_sd.query_devices.return_value = device_info
+    with patch("stt.openai"), patch("stt.find_input_device") as mock_find:
+        mock_find.return_value = (default_index, device_info['default_samplerate'])
         t = SpeechTranscriber(api_key="test-key")
     return t
 

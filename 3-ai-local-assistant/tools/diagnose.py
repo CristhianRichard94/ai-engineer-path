@@ -126,9 +126,50 @@ except Exception as e:
     print("    Could not list devices: {}".format(e))
 
 # ------------------------------------------------------------------
-# 5. OpenAI
+# 5. Microphone / input devices
 # ------------------------------------------------------------------
-print("\n[5] OpenAI")
+print("\n[5] Microphone (input devices)")
+try:
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "jarvis"))
+    import sounddevice as sd
+    from audio_input import find_input_device, _is_virtual, NoMicrophoneError
+
+    print("    All input-capable devices (from sounddevice):")
+    try:
+        devices = sd.query_devices()
+        input_devices = [
+            (i, d) for i, d in enumerate(devices) if d.get('max_input_channels', 0) > 0
+        ]
+        if not input_devices:
+            print("      (none found)")
+        for i, d in input_devices:
+            flag = " [virtual/loopback]" if _is_virtual(d.get('name', '')) else ""
+            print("      - index {}: \"{}\" (max_input_channels={}){}".format(
+                i, d.get('name', '?'), d.get('max_input_channels', 0), flag))
+    except Exception as e:
+        print("    Could not list input devices: {}".format(e))
+
+    print("\n    Resolved microphone (what JARVIS will actually use):")
+    try:
+        index, rate = find_input_device()
+        info = sd.query_devices(index)
+        resolved_is_virtual = _is_virtual(info.get('name', ''))
+        print("      -> index {}: \"{}\" ({} Hz)".format(index, info.get('name', '?'), rate))
+        if resolved_is_virtual:
+            print("      WARNING: resolved device name matches the virtual/loopback filter -")
+            print("               this shouldn't normally happen; the filter should have")
+            print("               skipped it in favor of a real microphone.")
+        else:
+            print("      OK: resolved device is not flagged as virtual/loopback.")
+    except NoMicrophoneError as e:
+        print("    FAILED: {}".format(e))
+except ImportError as e:
+    print("    Could not check microphone: {}".format(e))
+
+# ------------------------------------------------------------------
+# 6. OpenAI
+# ------------------------------------------------------------------
+print("\n[6] OpenAI")
 oai_key = os.getenv("OPENAI_API_KEY", "")
 if not oai_key:
     print("    OPENAI_API_KEY: NOT SET")
@@ -136,9 +177,9 @@ else:
     print("    OPENAI_API_KEY: SET ({})".format(oai_key[:8] + "..."))
 
 # ------------------------------------------------------------------
-# 6. Wake word models
+# 7. Wake word models
 # ------------------------------------------------------------------
-print("\n[6] Wake word models")
+print("\n[7] Wake word models")
 try:
     import openwakeword
     models_dir = os.path.join(

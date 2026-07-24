@@ -7,6 +7,7 @@ import numpy as np
 from scipy.signal import resample_poly
 import io, wave
 from state import write_state, append_transcript
+from audio_input import find_input_device
 
 # ── VAD (voice activity detection) tuning ───────────────────────────────────
 # ponytail: plain RMS-over-chunk energy thresholding on int16 PCM, no
@@ -40,18 +41,11 @@ class SpeechTranscriber:
     def __init__(self, api_key: str):
         self.client     = openai.OpenAI(api_key=api_key)
         self.model_rate = 16000
-        self.device, self.capture_rate = self._find_mic()
+        self.device, self.capture_rate = find_input_device()
 
         g = math.gcd(self.model_rate, int(self.capture_rate))
         self._resample_up   = self.model_rate // g
         self._resample_down = int(self.capture_rate) // g
-
-    def _find_mic(self):
-        # ponytail: trust the OS default input device rather than guessing by
-        # name — see wake_word.py._find_mic for why.
-        index = sd.default.device[0]
-        info  = sd.query_devices(index)
-        return index, info['default_samplerate']
 
     def _resample(self, audio: np.ndarray) -> np.ndarray:
         if self._resample_up == self._resample_down:
