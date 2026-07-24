@@ -47,7 +47,7 @@ def _apply_pending_history_reset(brain):
     single place that consumes the signal and clears brain.history.
     """
     if consume_history_reset():
-        brain.history = []
+        brain.reset_history()
         return True
     return False
 

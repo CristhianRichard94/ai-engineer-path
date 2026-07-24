@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import unittest
+import uuid
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -94,6 +95,26 @@ class JarvisBrainTests(unittest.TestCase):
         self.assertEqual(sent_messages[0]["role"], "system")
         self.assertEqual(len(sent_messages) - 1, self.brain.max_history)
         self.assertEqual(sent_messages[-1]["content"], "latest command")
+
+    # ── conversation_id ────────────────────────────────────────────────
+
+    def test_init_generates_valid_uuid_conversation_id(self):
+        self.assertIsInstance(self.brain.conversation_id, str)
+        uuid.UUID(self.brain.conversation_id)  # raises ValueError if invalid
+
+    def test_reset_history_clears_history_and_regenerates_conversation_id(self):
+        self.brain.history = [{"role": "user", "content": "hi"}]
+        original_id = self.brain.conversation_id
+
+        self.brain.reset_history()
+
+        self.assertEqual(self.brain.history, [])
+        self.assertNotEqual(self.brain.conversation_id, original_id)
+        uuid.UUID(self.brain.conversation_id)
+
+    def test_two_instances_get_different_conversation_ids(self):
+        other_brain = brain.JarvisBrain(api_key=self.api_key)
+        self.assertNotEqual(self.brain.conversation_id, other_brain.conversation_id)
 
 
 if __name__ == "__main__":

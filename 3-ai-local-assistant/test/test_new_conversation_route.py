@@ -48,11 +48,15 @@ class TestNewConversationRoute(unittest.TestCase):
         server_module.TRANSCRIPT_FILE = self._tmp_transcript
         state_module.RESET_SIGNAL_FILE = self._tmp_reset
 
+        self._orig_brain = server_module._brain
+        server_module._brain = None
+
         self.client = server_module.app.test_client()
 
     def tearDown(self):
         server_module.TRANSCRIPT_FILE = self._orig_transcript
         state_module.RESET_SIGNAL_FILE = self._orig_reset_file
+        server_module._brain = self._orig_brain
         if os.path.exists(self._tmp_transcript):
             os.remove(self._tmp_transcript)
         if os.path.exists(self._tmp_reset):
@@ -111,6 +115,25 @@ class TestNewConversationRoute(unittest.TestCase):
             self.assertEqual(resp.status_code, 200)
             self.assertEqual(resp.get_json()["jarvis_running"], False)
             mock_process_iter.assert_called_once()
+
+    def test_resets_chat_brain_history_when_present(self):
+        mock_brain = mock.MagicMock()
+        server_module._brain = mock_brain
+
+        with mock.patch("server._jarvis_is_running", return_value=False):
+            resp = self.client.post("/new-conversation")
+
+        self.assertEqual(resp.status_code, 200)
+        mock_brain.reset_history.assert_called_once_with()
+
+    def test_does_not_error_when_no_chat_brain_yet(self):
+        server_module._brain = None
+
+        with mock.patch("server._jarvis_is_running", return_value=False):
+            resp = self.client.post("/new-conversation")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json(), {"ok": True, "jarvis_running": False})
 
     def test_transcript_write_failure_returns_generic_error_not_path(self):
         with mock.patch("builtins.open", side_effect=PermissionError(

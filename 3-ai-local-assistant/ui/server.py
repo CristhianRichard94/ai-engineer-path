@@ -165,6 +165,13 @@ def state_stream():
             # pass it through unchanged so the frontend can drive the orb.
             if "amplitude" in current:
                 payload_dict["amplitude"] = current["amplitude"]
+            # Sourced from the lazily-created /chat brain only - the voice
+            # loop (main.py) runs in a separate process with its own
+            # JarvisBrain instance we have no access to here, so this is
+            # None/absent until at least one /chat message has been sent
+            # in this server process (known, accepted limitation).
+            if _brain is not None:
+                payload_dict["conversation_id"] = _brain.conversation_id
             payload = json.dumps(payload_dict)
             if payload != last_payload:
                 last_payload = payload
@@ -206,8 +213,8 @@ def chat():
             # dispatch (which may already have caused a real side effect,
             # e.g. opening an app) into an HTTP 500 - just log it.
             try:
-                append_transcript("user", message)
-                append_transcript("assistant", reply)
+                append_transcript("user", message, conversation_id=brain.conversation_id)
+                append_transcript("assistant", reply, conversation_id=brain.conversation_id)
             except Exception as e:
                 print("[CHAT] Failed to append transcript: {}".format(e))
     except Exception as e:
@@ -239,6 +246,10 @@ def new_conversation():
         # messages embed the full path) into the HTTP response body.
         print("[NEW-CONVERSATION] Failed to truncate transcript.jsonl: {}".format(e))
         return jsonify({"ok": False, "error": "failed to clear transcript"}), 500
+
+    with _chat_lock:
+        if _brain is not None:
+            _brain.reset_history()
 
     jarvis_running = _jarvis_is_running()
     if jarvis_running:

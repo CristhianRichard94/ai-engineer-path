@@ -61,6 +61,22 @@ class TestAppendTranscript(unittest.TestCase):
         state_module.append_transcript("user", "")
         self.assertFalse(os.path.exists(self._tmp_path))
 
+    def test_conversation_id_included_when_passed(self):
+        state_module.append_transcript("user", "hello there", conversation_id="abc-123")
+
+        with open(self._tmp_path, "r", encoding="utf-8") as f:
+            entry = json.loads(f.readline())
+
+        self.assertEqual(entry["conversation_id"], "abc-123")
+
+    def test_conversation_id_omitted_when_not_passed(self):
+        state_module.append_transcript("user", "hello there")
+
+        with open(self._tmp_path, "r", encoding="utf-8") as f:
+            entry = json.loads(f.readline())
+
+        self.assertNotIn("conversation_id", entry)
+
 
 if __name__ == "__main__":
     unittest.main()

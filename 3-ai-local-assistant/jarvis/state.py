@@ -51,11 +51,16 @@ def write_state(state: str, detail: str = "", amplitude: float = None):
         print("[STATE] Failed to write state.json: {}".format(e))
 
 
-def append_transcript(role: str, text: str):
+def append_transcript(role: str, text: str, conversation_id: str = None):
     """Append a single conversation turn to transcript.jsonl.
 
     role: "user" | "assistant"
     text: the transcribed/spoken text for this turn
+    conversation_id: optional identifier for the JarvisBrain conversation
+                      lifetime this turn belongs to (see JarvisBrain.
+                      conversation_id / reset_history()). Omitted from the
+                      payload entirely when None, keeping old log lines and
+                      callers that don't pass it unaffected.
 
     This is a simple append-only log (not atomic like write_state) - safe
     because each write is a single line and we never rewrite prior lines.
@@ -63,11 +68,15 @@ def append_transcript(role: str, text: str):
     if not text:
         return
 
-    line = json.dumps({
+    entry = {
         "role": role,
         "text": text,
         "ts": time.time(),
-    })
+    }
+    if conversation_id is not None:
+        entry["conversation_id"] = conversation_id
+
+    line = json.dumps(entry)
 
     try:
         with open(TRANSCRIPT_FILE, "a", encoding="utf-8") as f:

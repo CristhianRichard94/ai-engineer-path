@@ -67,6 +67,7 @@ class TestChatRoute(unittest.TestCase):
 
     def _mock_components(self, parsed=None, reply="Done, sir."):
         mock_brain = MagicMock()
+        mock_brain.conversation_id = "test-conversation-id"
         mock_brain.think.return_value = parsed or {"intent": "chat", "params": {}, "reply": reply}
         mock_router = MagicMock()
         mock_router.dispatch.return_value = reply
@@ -183,6 +184,7 @@ class TestChatRoute(unittest.TestCase):
         adjacent and in order, validating that append_transcript runs
         inside the same lock as think()/dispatch()."""
         mock_brain = MagicMock()
+        mock_brain.conversation_id = "test-conversation-id"
 
         def think(message):
             # Simulate a slow LLM call so the two requests are guaranteed

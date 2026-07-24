@@ -39,7 +39,7 @@ class TestApplyPendingHistoryReset(unittest.TestCase):
         result = main_module._apply_pending_history_reset(brain)
 
         self.assertTrue(result)
-        self.assertEqual(brain.history, [])
+        brain.reset_history.assert_called_once()
 
     @patch("main.consume_history_reset", return_value=False)
     def test_leaves_history_untouched_and_returns_false_when_no_reset(self, mock_consume):
@@ -50,6 +50,7 @@ class TestApplyPendingHistoryReset(unittest.TestCase):
 
         self.assertFalse(result)
         self.assertEqual(brain.history, ["some", "prior", "turns"])
+        brain.reset_history.assert_not_called()
 
 
 class TestRunSession(unittest.TestCase):
@@ -79,7 +80,7 @@ class TestRunSession(unittest.TestCase):
         self.brain.think.assert_not_called()
         self.router.dispatch.assert_not_called()
         self.speaker.speak.assert_not_called()
-        self.assertEqual(self.brain.history, [])
+        self.brain.reset_history.assert_called_once()
 
     @patch("main.write_session_note")
     @patch("main.build_or_update_index")
@@ -96,7 +97,7 @@ class TestRunSession(unittest.TestCase):
         # Exactly one full turn happened before the session was interrupted.
         self.assertEqual(self.stt.capture_and_transcribe.call_count, 1)
         self.assertEqual(self.router.dispatch.call_count, 1)
-        self.assertEqual(self.brain.history, [])
+        self.brain.reset_history.assert_called_once()
 
     @patch("main.write_session_note")
     @patch("main.build_or_update_index")

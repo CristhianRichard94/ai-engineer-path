@@ -1,4 +1,4 @@
-import openai, json
+import openai, json, uuid
 
 from constants import JARVIS_SYSTEM
 FALLBACK_INTENTS = {"chat"}   # intents that mean "mini wasn't sure"
@@ -8,6 +8,18 @@ class JarvisBrain:
         self.client  = openai.OpenAI(api_key=api_key)
         self.history = []          # rolling conversation memory
         self.max_history = 10      # keep last 10 turns
+        self.conversation_id = str(uuid.uuid4())   # identifies this conversation's lifetime
+
+    def reset_history(self):
+        """Clear rolling conversation memory and start a new conversation_id.
+
+        Called whenever conversation history is reset (process restart, or
+        an explicit "New Conversation" request) so transcript.jsonl lines
+        written before/after this point can be told apart via
+        conversation_id, even though they share the same brain instance.
+        """
+        self.history = []
+        self.conversation_id = str(uuid.uuid4())
 
     def think(self, user_text: str) -> dict:
         result = self._call_model("gpt-4o-mini", user_text)
