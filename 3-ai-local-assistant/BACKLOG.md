@@ -53,6 +53,34 @@ Voice-activated local assistant. Status as of this pass.
       still in-RAM per-session (cleared on restart/"New Conversation") — the vault
       gives cross-session *recall via retrieval*, not literal history replay.
 
+## Conversation-flow gaps (found via OpenJarvis comparison, 2026-07-24)
+
+- [x] No text chat endpoint exists at all — fixed: `POST /chat` in `ui/server.py`, reuses
+      `JarvisBrain`/`IntentRouter` under a lock, writes transcript + vault note. Merged
+      `feature/text-chat` (2026-07-24), QA + security clean both rounds.
+- [ ] Intent routing and conversational reply are the same call — `brain.py:_call_model`
+      does JSON-mode intent classification, and `chat` intent's `reply` field IS the
+      conversational answer (`router.py` routes `chat` -> `do_nothing`, just echoes it).
+      No dedicated multi-turn chat completion path. Fragile for genuine back-and-forth.
+      Deliberately deferred: splitting this is a model-behavior/cost tradeoff call, not a
+      bug — current single-call approach works fine in practice. Revisit if chat replies
+      start feeling shallow, not preemptively.
+- [x] `brain.history` had no session/conversation id, making it impossible to tell which
+      process lifetime a transcript entry belongs to. Fixed: `JarvisBrain.conversation_id`
+      (uuid4, regenerated on init and on history reset), threaded through
+      `append_transcript(role, text, conversation_id)` into `transcript.jsonl`, and
+      surfaced from `ui/server.py` via `GET /state`'s `conversation_id` field. History
+      itself is still in-RAM per-process (unchanged) — this only makes restarts/resets
+      visible/attributable in the transcript, it does not add persistence or resumption.
+- [ ] Reset is all-or-nothing: UI "New Conversation" wipes `brain.history = []` entirely
+      (`ui/server.py` reset signal -> `main.py`) — no per-conversation scoping, can't run
+      two independent conversations or resume a specific one. Deliberately deferred:
+      this app is single-user/single-active-conversation by design (one voice loop, one
+      chat UI) — true multi-session resume needs a session store, a real new feature, not
+      a gap-fill. Revisit only if multi-conversation becomes an actual ask.
+- [x] No frontend chat UI — fixed alongside the `/chat` endpoint: `ChatInput.tsx` wired
+      into `App.tsx` below the transcript panel. Merged `feature/text-chat` (2026-07-24).
+
 ## Cleaned up this pass
 
 - [x] Deleted stale `jarvis/tts.py` duplicate (dead file, root `tts.py` was already the one
