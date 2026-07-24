@@ -22,7 +22,7 @@ if JARVIS_DIR not in sys.path:
 # Stub heavy optional packages before importing router so we never need them
 # installed in the test environment.
 for mod in ("pycaw", "pycaw.pycaw", "comtypes", "spotipy",
-            "spotipy.oauth2", "spotipy.exceptions"):
+            "spotipy.oauth2", "spotipy.exceptions", "anthropic"):
     if mod not in sys.modules:
         sys.modules[mod] = MagicMock()
 
@@ -402,6 +402,40 @@ class TestClaudeCli(unittest.TestCase):
         self.assertEqual(self.router._pending, {"intent": "daily_task_reminder_confirm"})
         self.assertIn("confirm", reply.lower())
 
+    @patch("router.append_claude_audit")
+    @patch("router.retrieve", return_value=[])
+    def test_ask_claude_sdk_success_logs_success_audit(self, mock_retrieve, mock_audit):
+        self.router._claude = MagicMock()
+        self.router._claude.ask.return_value = ("Here you go, sir.", None)
+
+        reply = self.router._ask_claude_sdk("summarize the repo")
+
+        self.assertEqual(reply, "Here you go, sir.")
+        mock_audit.assert_called_once_with("summarize the repo", "Here you go, sir.", "", 0)
+
+    @patch("router.append_claude_audit")
+    @patch("router.retrieve", return_value=[])
+    def test_ask_claude_sdk_failure_logs_real_error_not_fake_success(self, mock_retrieve, mock_audit):
+        # Regression test: previously append_claude_audit was always called
+        # with stderr="" and returncode=0 even when ClaudeClient.ask()
+        # internally caught an error, hiding real SDK failures from the
+        # audit log.
+        self.router._claude = MagicMock()
+        self.router._claude.ask.return_value = (
+            "Sorry, sir, I couldn't reach Claude for that.",
+            "APIConnectionError: could not connect",
+        )
+
+        reply = self.router._ask_claude_sdk("summarize the repo")
+
+        self.assertIn("couldn't reach claude", reply.lower())
+        mock_audit.assert_called_once_with(
+            "summarize the repo",
+            "Sorry, sir, I couldn't reach Claude for that.",
+            "APIConnectionError: could not connect",
+            None,
+        )
+
     @patch("router.shutil.which", return_value=None)
     def test_call_claude_cli_missing_binary_returns_graceful_reply(self, mock_which):
         reply = self.router._call_claude_cli("hello")
@@ -491,17 +525,17 @@ class TestClaudeCli(unittest.TestCase):
 
     def test_ask_claude_confirm_pending_affirmative_dispatches_cli(self):
         self.router._pending = {"intent": "ask_claude_confirm", "query": "summarize the repo"}
-        with patch.object(self.router, "_call_claude_cli", return_value="Done, sir.") as mock_cli:
+        with patch.object(self.router, "_ask_claude_sdk", return_value="Done, sir.") as mock_sdk:
             reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes")
-        mock_cli.assert_called_once_with("summarize the repo")
+        mock_sdk.assert_called_once_with("summarize the repo")
         self.assertEqual(reply, "Done, sir.")
         self.assertIsNone(self.router._pending)
 
     def test_ask_claude_confirm_pending_negative_cancels(self):
         self.router._pending = {"intent": "ask_claude_confirm", "query": "summarize the repo"}
-        with patch.object(self.router, "_call_claude_cli") as mock_cli:
+        with patch.object(self.router, "_ask_claude_sdk") as mock_sdk:
             reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "no"}, raw_text="no thanks")
-        mock_cli.assert_not_called()
+        mock_sdk.assert_not_called()
         self.assertIn("cancelled", reply.lower())
         self.assertIsNone(self.router._pending)
 
@@ -509,30 +543,30 @@ class TestClaudeCli(unittest.TestCase):
         # Anything that isn't an explicit affirmative must be treated as a
         # cancel, not silently re-prompted or (worse) executed.
         self.router._pending = {"intent": "ask_claude_confirm", "query": "summarize the repo"}
-        with patch.object(self.router, "_call_claude_cli") as mock_cli:
+        with patch.object(self.router, "_ask_claude_sdk") as mock_sdk:
             reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "what's the weather"},
                                           raw_text="what's the weather")
-        mock_cli.assert_not_called()
+        mock_sdk.assert_not_called()
         self.assertIn("cancelled", reply.lower())
 
     def test_ask_claude_full_dispatch_round_trip_pending_confirm_execute(self):
         """Full round trip through dispatch(): fresh ask_claude call with a
-        query -> confirmation prompt -> user says yes -> the CLI actually
+        query -> confirmation prompt -> user says yes -> the SDK path actually
         gets invoked. Exercises dispatch()'s pending-routing, not just the
         handler methods directly."""
-        with patch.object(self.router, "_call_claude_cli", return_value="Repo summarized, sir.") as mock_cli:
+        with patch.object(self.router, "_ask_claude_sdk", return_value="Repo summarized, sir.") as mock_sdk:
             first_reply = self.router.dispatch(
                 {"intent": "ask_claude", "params": {"query": "summarize the repo"}, "reply": "unused"}
             )
             self.assertIn("confirm", first_reply.lower())
             self.assertIn("summarize the repo", first_reply)
-            mock_cli.assert_not_called()
+            mock_sdk.assert_not_called()
 
             second_reply = self.router.dispatch(
                 {"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes"
             )
 
-        mock_cli.assert_called_once_with("summarize the repo")
+        mock_sdk.assert_called_once_with("summarize the repo")
         self.assertEqual(second_reply, "Repo summarized, sir.")
         self.assertIsNone(self.router._pending)
 

@@ -17,6 +17,8 @@ import requests
 from spotify_player import SpotifyPlayer, SpotifyAuthError
 from audio_switcher import AudioSwitcher
 from state import append_claude_audit
+from vault import retrieve
+from claude_client import ClaudeClient
 
 
 class IntentRouter:
@@ -27,6 +29,11 @@ class IntentRouter:
         # Spotify player (lazy-loaded on first use)
         self._spotify = None
         self._audio   = AudioSwitcher()
+
+        # Anthropic SDK client for the vault-backed ask_claude path (only
+        # configured if an API key is present in the environment).
+        anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+        self._claude = ClaudeClient(anthropic_key) if anthropic_key else None
 
         # Single-slot pending-clarification state (documented limitation:
         # only one outstanding slot-fill conversation at a time, no
@@ -137,7 +144,7 @@ class IntentRouter:
             query = pending["query"]
             self._pending = None
             if self._is_affirmative(parsed, raw_text):
-                return self._call_claude_cli(query)
+                return self._ask_claude_sdk(query)
             return "Okay, cancelled, sir."
 
         if intent == "daily_task_reminder_confirm":
@@ -291,6 +298,30 @@ class IntentRouter:
         # agentic CLI (with project-tracker MCP tool access).
         self._pending = {"intent": "daily_task_reminder_confirm"}
         return "Want me to check today's tasks with Claude, sir? Say yes to confirm."
+
+    def _ask_claude_sdk(self, query):
+        """Answer `query` via the Anthropic SDK, augmented with vault
+        context retrieved via FAISS. Used by ask_claude_confirm - the
+        MCP-tool-driven daily_task_reminder path still uses _call_claude_cli.
+        """
+        if self._claude is None:
+            return "Claude isn't configured, sir. Please add ANTHROPIC_API_KEY to the .env file."
+
+        top_k = int(os.getenv("JARVIS_VAULT_TOP_K", "4"))
+        chunks = retrieve(query, top_k=top_k)
+
+        model = os.getenv("JARVIS_CLAUDE_MODEL", "claude-sonnet-5")
+        reply, error = self._claude.ask(query, chunks, model=model)
+
+        if error:
+            append_claude_audit(query, reply, error, None)
+        else:
+            append_claude_audit(query, reply, "", 0)
+
+        if reply and len(reply) > self._CLAUDE_REPLY_LIMIT:
+            reply = reply[:self._CLAUDE_REPLY_LIMIT].rstrip() + "...(truncated)"
+
+        return reply
 
     def _call_claude_cli(self, prompt, allowed_tools=None):
         """Run the Claude Code CLI non-interactively and return a spoken reply.

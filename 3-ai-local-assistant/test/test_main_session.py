@@ -65,10 +65,12 @@ class TestRunSession(unittest.TestCase):
         self.brain.think.return_value = {"intent": "get_time"}
         self.router.dispatch.return_value = "It is 3 PM, sir."
 
+    @patch("main.write_session_note")
+    @patch("main.build_or_update_index")
     @patch("main.time.sleep", return_value=None)
     @patch("main.consume_history_reset", return_value=True)
     def test_reset_pending_at_start_of_turn_ends_session_and_clears_history(
-        self, mock_consume, mock_sleep
+        self, mock_consume, mock_sleep, mock_build_index, mock_write_note
     ):
         main_module.run_session(self.stt, self.brain, self.router, self.speaker)
 
@@ -79,8 +81,12 @@ class TestRunSession(unittest.TestCase):
         self.speaker.speak.assert_not_called()
         self.assertEqual(self.brain.history, [])
 
+    @patch("main.write_session_note")
+    @patch("main.build_or_update_index")
     @patch("main.time.sleep", return_value=None)
-    def test_reset_pending_mid_session_interrupts_before_next_turn(self, mock_sleep):
+    def test_reset_pending_mid_session_interrupts_before_next_turn(
+        self, mock_sleep, mock_build_index, mock_write_note
+    ):
         # Reset is not pending for the first turn, but becomes pending
         # before the second turn - simulating a click on New Conversation
         # while JARVIS is mid-conversation (e.g. speaking turn 1's reply).
@@ -92,9 +98,13 @@ class TestRunSession(unittest.TestCase):
         self.assertEqual(self.router.dispatch.call_count, 1)
         self.assertEqual(self.brain.history, [])
 
+    @patch("main.write_session_note")
+    @patch("main.build_or_update_index")
     @patch("main.time.sleep", return_value=None)
     @patch("main.consume_history_reset", return_value=False)
-    def test_no_reset_pending_runs_full_turn_normally(self, mock_consume, mock_sleep):
+    def test_no_reset_pending_runs_full_turn_normally(
+        self, mock_consume, mock_sleep, mock_build_index, mock_write_note
+    ):
         self.brain.think.return_value = {"intent": "goodbye"}
 
         main_module.run_session(self.stt, self.brain, self.router, self.speaker)
@@ -103,6 +113,8 @@ class TestRunSession(unittest.TestCase):
         self.speaker.speak.assert_called_with("It is 3 PM, sir.")
         # goodbye intent ends the session normally without touching history.
         self.assertEqual(self.brain.history, ["turn1", "turn2"])
+        mock_write_note.assert_called_once_with("goodbye", "what time is it", "It is 3 PM, sir.")
+        mock_build_index.assert_called_once()
 
 
 if __name__ == "__main__":

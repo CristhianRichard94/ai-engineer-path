@@ -26,8 +26,15 @@ from tts      import Speaker
 from brain    import JarvisBrain
 from router   import IntentRouter
 from state    import write_state, consume_history_reset
+from vault    import ensure_vault_bootstrap, build_or_update_index, write_session_note
 
 load_dotenv()
+
+try:
+    ensure_vault_bootstrap()
+    build_or_update_index()
+except Exception as e:
+    print("[VAULT] Startup indexing failed, continuing without it: {}".format(e))
 
 MAX_TURNS_PER_SESSION = 20   # safety cap before re-requesting wake word
 
@@ -76,8 +83,18 @@ def run_session(stt, brain, router, speaker):
         time.sleep(0.4)
         speaker.speak(reply)
 
+        # ── Persist session note (best-effort) ─────────────────────
+        try:
+            write_session_note(intent, command, reply)
+        except Exception as e:
+            print("[VAULT] Failed to write session note: {}".format(e))
+
         # ── Session end? ────────────────────────────────────────────
         if intent == "goodbye":
+            try:
+                build_or_update_index()
+            except Exception as e:
+                print("[VAULT] Failed to rebuild index at session end: {}".format(e))
             return   # back to wake-word listening
 
 

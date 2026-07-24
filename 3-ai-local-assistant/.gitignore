@@ -6,3 +6,4 @@ state.json
 state.json.tmp
 transcript.jsonl
 claude_cli_audit.jsonl
+vault/

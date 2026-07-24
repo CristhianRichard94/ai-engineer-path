@@ -1,6 +1,9 @@
 # ── Core AI ───────────────────────────────────────────────────────────
 openai                  # GPT-4o brain + Whisper STT
 python-dotenv           # .env loader
+anthropic               # Claude SDK client (ask_claude vault-backed path)
+sentence-transformers   # local embeddings for vault note retrieval
+faiss-cpu               # local vector index for vault note retrieval
 
 # ── Speech ────────────────────────────────────────────────────────────
 pyttsx3                 # offline TTS (fallback voice)

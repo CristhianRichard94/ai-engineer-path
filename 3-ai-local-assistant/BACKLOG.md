@@ -44,7 +44,14 @@ Voice-activated local assistant. Status as of this pass.
 - [ ] No error recovery if the Fish Speech Docker container dies mid-session (falls back
       per-call, but no reconnect/backoff logic).
 - [ ] No wake-word sensitivity/threshold tuning UI — `threshold = 0.3` is a fixed constant.
-- [ ] No conversation memory persistence across process restarts (history is in-RAM only).
+- [x] No conversation memory persistence across process restarts — addressed via a
+      local Obsidian-style vault (`jarvis/vault.py`) + FAISS retrieval: every turn
+      is written as a session note under `vault/prompts/`, and `ask_claude`
+      retrieves relevant chunks from the vault (session notes + hand-written
+      `vault/projects/` and `vault/about-me/` notes) as context for the Anthropic
+      SDK call in `jarvis/claude_client.py`. Note: `JarvisBrain.history` itself is
+      still in-RAM per-session (cleared on restart/"New Conversation") — the vault
+      gives cross-session *recall via retrieval*, not literal history replay.
 
 ## Cleaned up this pass
 
