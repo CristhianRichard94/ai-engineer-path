@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import {
   JarvisOrb,
   STATE_TARGETS,
@@ -89,6 +89,41 @@ export default function VoiceOrb({ state, amplitude, size = 'panel', theme = 'cy
   // amplitude jitter doesn't snap the orb's visual params frame-to-frame.
   const ampTweenTarget = useRef({ value: 0 })
 
+  // Mouse/touch drag-to-spin: purely cosmetic, tracks pointer angle around
+  // the orb's center and applies it as a CSS rotation on the wrapper -
+  // ponytail: no physics/inertia, just 1:1 angle-follows-pointer while
+  // dragging, so it "feels" spinnable without a physics engine.
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const [rotation, setRotation] = useState(0)
+  const dragState = useRef<{ startAngle: number; startRotation: number } | null>(null)
+
+  const angleFromCenter = (clientX: number, clientY: number) => {
+    const el = wrapperRef.current
+    if (!el) return 0
+    const rect = el.getBoundingClientRect()
+    const cx = rect.left + rect.width / 2
+    const cy = rect.top + rect.height / 2
+    return (Math.atan2(clientY - cy, clientX - cx) * 180) / Math.PI
+  }
+
+  const handlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    dragState.current = { startAngle: angleFromCenter(e.clientX, e.clientY), startRotation: rotation }
+  }
+
+  const handlePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragState.current) return
+    const current = angleFromCenter(e.clientX, e.clientY)
+    setRotation(dragState.current.startRotation + (current - dragState.current.startAngle))
+  }
+
+  const handlePointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    dragState.current = null
+    if ((e.target as HTMLElement).hasPointerCapture?.(e.pointerId)) {
+      ;(e.target as HTMLElement).releasePointerCapture(e.pointerId)
+    }
+  }
+
   useEffect(() => {
     if (state !== 'speaking') {
       gsap.killTweensOf(ampTweenTarget.current)
@@ -138,9 +173,22 @@ export default function VoiceOrb({ state, amplitude, size = 'panel', theme = 'cy
 
   return (
     <div
+      ref={wrapperRef}
       className="voice-orb-wrapper"
       aria-hidden="true"
-      style={{ width: '100%', maxWidth: 320, aspectRatio: '1 / 1', margin: '0 auto' }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      style={{
+        width: '100%',
+        maxWidth: 320,
+        aspectRatio: '1 / 1',
+        margin: '0 auto',
+        transform: `rotate(${rotation}deg)`,
+        touchAction: 'none',
+        cursor: 'grab',
+      }}
     >
       <JarvisOrb
         size={size}

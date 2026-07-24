@@ -19,6 +19,14 @@ export function useTranscript(paused = false) {
   const seenCountRef = useRef(0)
   const pausedRef = useRef(paused)
   pausedRef.current = paused
+  // Server-side transcript.jsonl is now a permanent append-only log (it's no
+  // longer truncated on "New Conversation" - see /new-conversation). For
+  // callers with no conversation_id (the voice loop never tags its own
+  // entries), GET /transcript can't scope to "only entries since the last
+  // clear" server-side, so we enforce that boundary here: any entry with
+  // ts <= this cutoff is filtered out of what the poller shows, even though
+  // it's still physically in the file.
+  const clearedAfterRef = useRef<number | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -31,11 +39,14 @@ export function useTranscript(paused = false) {
         const data = await res.json()
         if (cancelled || pausedRef.current || !Array.isArray(data)) return
 
-        if (data.length < seenCountRef.current) {
+        const cutoff = clearedAfterRef.current
+        const visible = cutoff === null ? data : data.filter((e) => (e.ts ?? 0) > cutoff)
+
+        if (visible.length < seenCountRef.current) {
           seenCountRef.current = 0
         }
-        seenCountRef.current = data.length
-        setEntries(data)
+        seenCountRef.current = visible.length
+        setEntries(visible)
       } catch {
         // Ignore transient network errors; next poll will retry.
       }
@@ -51,11 +62,20 @@ export function useTranscript(paused = false) {
   }, [])
 
   const clear = () => {
+    clearedAfterRef.current = Date.now() / 1000
     seenCountRef.current = 0
     setEntries([])
   }
 
-  const restore = (snapshot: TranscriptEntry[]) => {
+  const restore = (snapshot: TranscriptEntry[], opts: { liftCutoff?: boolean } = {}) => {
+    // liftCutoff is only true for a genuine resume (commitResume) - that's
+    // the one case where showing older, already-cleared entries is correct.
+    // Rolling back a failed clear, or backing out of history without
+    // resuming, must NOT lift the cutoff: doing so silently resurrects
+    // entries the user already cleared on the next poll.
+    if (opts.liftCutoff) {
+      clearedAfterRef.current = null
+    }
     setEntries(snapshot)
     seenCountRef.current = snapshot.length
   }

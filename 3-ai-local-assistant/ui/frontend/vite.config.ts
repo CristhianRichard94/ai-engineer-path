@@ -12,6 +12,9 @@ export default defineConfig({
       '/state': 'http://127.0.0.1:5151',
       '/transcript': 'http://127.0.0.1:5151',
       '/restart': 'http://127.0.0.1:5151',
+      '/chat': 'http://127.0.0.1:5151',
+      '/new-conversation': 'http://127.0.0.1:5151',
+      '/conversations': 'http://127.0.0.1:5151',
     },
   },
 })

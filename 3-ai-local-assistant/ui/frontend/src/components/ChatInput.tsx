@@ -1,9 +1,19 @@
 import { useRef, useState, type KeyboardEvent } from 'react'
 import { useChat } from '../hooks/useChat'
 
-export default function ChatInput() {
+interface ChatInputProps {
+  viewingHistory?: boolean
+  pendingResumeId?: string | null
+  onResumeSuccess?: (conversationId: string) => void
+}
+
+export default function ChatInput({
+  viewingHistory = false,
+  pendingResumeId = null,
+  onResumeSuccess,
+}: ChatInputProps) {
   const [value, setValue] = useState('')
-  const { sending, error, sendMessage } = useChat()
+  const { sending, error, sendMessage } = useChat(pendingResumeId, onResumeSuccess)
   // React state (`sending`) isn't synchronously readable across two fast
   // events fired before a re-render commits, so a ref guard is needed to
   // reliably prevent a double-submit (e.g. two near-simultaneous Enter
@@ -13,7 +23,7 @@ export default function ChatInput() {
 
   const submit = async () => {
     if (submittingRef.current) return
-    if (!value.trim() || sending) return
+    if (!value.trim() || sending || viewingHistory) return
 
     submittingRef.current = true
     const message = value
@@ -39,11 +49,11 @@ export default function ChatInput() {
           type="text"
           id="chat-input"
           className="chat-input"
-          placeholder="Type a message to JARVIS…"
+          placeholder={viewingHistory ? 'Resume this conversation to continue it.' : 'Type a message to JARVIS…'}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          disabled={sending}
+          disabled={sending || viewingHistory}
           aria-label="Message JARVIS"
         />
         <button
@@ -51,7 +61,7 @@ export default function ChatInput() {
           id="chat-send-btn"
           className="chat-send-btn"
           onClick={submit}
-          disabled={sending || !value.trim()}
+          disabled={sending || viewingHistory || !value.trim()}
         >
           {sending ? <span className="chat-send-spinner" aria-hidden="true" /> : 'Send'}
         </button>
