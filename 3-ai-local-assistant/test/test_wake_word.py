@@ -28,9 +28,8 @@ from wake_word import WakeWordDetector
 def _make_detector(default_index, device_info):
     with patch("wake_word._ensure_models"), \
          patch("wake_word.Model"), \
-         patch("wake_word.sd") as mock_sd:
-        mock_sd.default.device = (default_index, default_index)
-        mock_sd.query_devices.return_value = device_info
+         patch("wake_word.find_input_device") as mock_find:
+        mock_find.return_value = (default_index, device_info['default_samplerate'])
         detector = WakeWordDetector()
     return detector
 
@@ -99,6 +98,112 @@ class TestListenForWake(unittest.TestCase):
 
         self.assertTrue(result)
         detector.model.predict.assert_called()
+
+    def test_no_audio_reopens_stream_on_new_device(self):
+        """Regression: previously the retry only re-resolved the device and
+        discarded the result, still reading from the same stale stream. Now
+        when find_input_device() returns a DIFFERENT device on timeout, the
+        stream must actually be closed and reopened (sd.InputStream called
+        again) with the new device - real recovery, not just a log line."""
+        detector = _make_detector(11, {"name": "x", "default_samplerate": 48000.0})
+
+        import queue as queue_module
+
+        class _StopTest(Exception):
+            pass
+
+        call_count = {"n": 0}
+
+        def _fake_get(timeout=None):
+            call_count["n"] += 1
+            if call_count["n"] >= 2:
+                # End the test after the reopened stream's inner loop has
+                # been entered once.
+                raise _StopTest()
+            raise queue_module.Empty()
+
+        mock_stream = MagicMock()
+        mock_stream.__enter__.return_value = mock_stream
+
+        with patch("wake_word.sd") as mock_sd, \
+             patch("wake_word.find_input_device") as mock_find, \
+             patch("builtins.print") as mock_print:
+            mock_sd.InputStream.side_effect = lambda *a, **kw: mock_stream
+            # Different device/rate than the one the detector was built with.
+            mock_find.return_value = (99, 16000.0)
+
+            with patch("queue.Queue") as mock_queue_cls:
+                mock_queue = MagicMock()
+                mock_queue.get.side_effect = _fake_get
+                mock_queue_cls.return_value = mock_queue
+
+                with self.assertRaises(_StopTest):
+                    detector.listen_for_wake()
+
+            printed = [str(c.args[0]) for c in mock_print.call_args_list if c.args]
+            self.assertTrue(
+                any("[WAKE] No audio from input device" in p for p in printed)
+            )
+            # Re-resolves the mic once on the no-audio path.
+            mock_find.assert_called_once()
+            # Stream was reopened with the new device: InputStream invoked
+            # twice (initial open + reopen), and the detector's device/rate
+            # were updated.
+            self.assertEqual(mock_sd.InputStream.call_count, 2)
+            second_call_kwargs = mock_sd.InputStream.call_args_list[1].kwargs
+            self.assertEqual(second_call_kwargs["device"], 99)
+            self.assertEqual(second_call_kwargs["samplerate"], 16000.0)
+            self.assertEqual(detector.device, 99)
+            self.assertEqual(detector.capture_rate, 16000.0)
+
+    def test_no_audio_same_device_does_not_reopen_stream(self):
+        """When find_input_device() resolves to the SAME device on timeout,
+        the stream must NOT be needlessly reopened (no stream churn) - just
+        keep waiting on the already-open stream."""
+        detector = _make_detector(11, {"name": "x", "default_samplerate": 48000.0})
+
+        import queue as queue_module
+
+        class _StopTest(Exception):
+            pass
+
+        call_count = {"n": 0}
+
+        def _fake_get(timeout=None):
+            call_count["n"] += 1
+            if call_count["n"] >= 3:
+                # Let a couple of timeouts pass on the same open stream.
+                raise _StopTest()
+            raise queue_module.Empty()
+
+        mock_stream = MagicMock()
+        mock_stream.__enter__.return_value = mock_stream
+
+        with patch("wake_word.sd") as mock_sd, \
+             patch("wake_word.find_input_device") as mock_find, \
+             patch("builtins.print") as mock_print:
+            mock_sd.InputStream.side_effect = lambda *a, **kw: mock_stream
+            # Same device/rate the detector was already built with.
+            mock_find.return_value = (11, 48000.0)
+
+            with patch("queue.Queue") as mock_queue_cls:
+                mock_queue = MagicMock()
+                mock_queue.get.side_effect = _fake_get
+                mock_queue_cls.return_value = mock_queue
+
+                with self.assertRaises(_StopTest):
+                    detector.listen_for_wake()
+
+            printed = [str(c.args[0]) for c in mock_print.call_args_list if c.args]
+            # Warned exactly once (not once per timeout while still stalled).
+            warn_count = sum(
+                1 for p in printed if "[WAKE] No audio from input device" in p
+            )
+            self.assertEqual(warn_count, 1)
+            # Re-resolved once, but stream was NOT reopened - only the
+            # initial InputStream call should have happened.
+            mock_find.assert_called_once()
+            self.assertEqual(mock_sd.InputStream.call_count, 1)
 
 
 if __name__ == "__main__":
