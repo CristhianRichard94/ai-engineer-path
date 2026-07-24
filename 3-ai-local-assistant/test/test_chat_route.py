@@ -46,10 +46,15 @@ class TestChatRoute(unittest.TestCase):
 
     def setUp(self):
         self._orig_transcript_file = state_module.TRANSCRIPT_FILE
+        self._orig_server_transcript_file = server_module.TRANSCRIPT_FILE
         fd, self._tmp_transcript = __import__("tempfile").mkstemp(suffix=".jsonl")
         os.close(fd)
         os.remove(self._tmp_transcript)
         state_module.TRANSCRIPT_FILE = self._tmp_transcript
+        # server.py imports TRANSCRIPT_FILE as its own module-level name
+        # (used by _read_transcript/_resume_conversation), so it must be
+        # patched separately from state_module's copy.
+        server_module.TRANSCRIPT_FILE = self._tmp_transcript
 
         # Reset the module-level shared brain/router singletons between
         # tests so mocks don't leak across cases.
@@ -60,6 +65,7 @@ class TestChatRoute(unittest.TestCase):
 
     def tearDown(self):
         state_module.TRANSCRIPT_FILE = self._orig_transcript_file
+        server_module.TRANSCRIPT_FILE = self._orig_server_transcript_file
         if os.path.exists(self._tmp_transcript):
             os.remove(self._tmp_transcript)
         server_module._brain = None
@@ -248,6 +254,95 @@ class TestChatRoute(unittest.TestCase):
             self.client.post("/chat", json={"message": "hello"})
 
         self.assertFalse(os.path.exists(self._tmp_transcript))
+
+    # ── Resume conversation ─────────────────────────────────────────────
+
+    def _write_transcript_lines(self, entries):
+        with open(self._tmp_transcript, "w", encoding="utf-8") as f:
+            for entry in entries:
+                f.write(__import__("json").dumps(entry) + "\n")
+
+    def test_resume_id_reconstructs_history_from_transcript(self):
+        self._write_transcript_lines([
+            {"role": "user", "text": "first", "ts": 1, "conversation_id": "old-conv"},
+            {"role": "assistant", "text": "reply-first", "ts": 2, "conversation_id": "old-conv"},
+            {"role": "user", "text": "unrelated", "ts": 3, "conversation_id": "other-conv"},
+        ])
+
+        patcher, mock_brain, mock_router = self._mock_components()
+        mock_brain.conversation_id = "current-conv"
+        mock_brain.max_history = 10
+        with patcher, mock.patch.object(server_module, "write_session_note"):
+            resp = self.client.post(
+                "/chat", json={"message": "hello", "conversation_id": "old-conv"}
+            )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(mock_brain.conversation_id, "old-conv")
+        self.assertEqual(
+            mock_brain.history,
+            [
+                {"role": "user", "content": "first"},
+                {"role": "assistant", "content": "reply-first"},
+            ],
+        )
+
+    def test_resume_id_caps_history_to_max_history_turns(self):
+        entries = []
+        for i in range(5):
+            entries.append({"role": "user", "text": "u{}".format(i), "ts": i, "conversation_id": "old-conv"})
+            entries.append({"role": "assistant", "text": "a{}".format(i), "ts": i, "conversation_id": "old-conv"})
+        self._write_transcript_lines(entries)
+
+        patcher, mock_brain, mock_router = self._mock_components()
+        mock_brain.conversation_id = "current-conv"
+        mock_brain.max_history = 3
+        with patcher, mock.patch.object(server_module, "write_session_note"):
+            resp = self.client.post(
+                "/chat", json={"message": "hello", "conversation_id": "old-conv"}
+            )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(mock_brain.history), 3)
+        self.assertEqual(
+            mock_brain.history,
+            [
+                {"role": "assistant", "content": "a3"},
+                {"role": "user", "content": "u4"},
+                {"role": "assistant", "content": "a4"},
+            ],
+        )
+
+    def test_resume_id_matching_current_conversation_is_a_noop(self):
+        patcher, mock_brain, mock_router = self._mock_components()
+        mock_brain.conversation_id = "same-conv"
+        mock_brain.max_history = 10
+        mock_brain.history = ["preexisting"]
+        with patcher, mock.patch.object(
+            server_module, "_resume_conversation"
+        ) as mock_resume, mock.patch.object(server_module, "write_session_note"):
+            resp = self.client.post(
+                "/chat", json={"message": "hello", "conversation_id": "same-conv"}
+            )
+
+        self.assertEqual(resp.status_code, 200)
+        mock_resume.assert_not_called()
+
+    def test_no_conversation_id_leaves_existing_behavior_unchanged(self):
+        patcher, mock_brain, mock_router = self._mock_components()
+        mock_brain.conversation_id = "current-conv"
+        with patcher, mock.patch.object(
+            server_module, "_resume_conversation"
+        ) as mock_resume, mock.patch.object(server_module, "write_session_note"):
+            resp = self.client.post("/chat", json={"message": "hello"})
+
+        self.assertEqual(resp.status_code, 200)
+        mock_resume.assert_not_called()
+
+    def test_non_string_conversation_id_returns_400(self):
+        resp = self.client.post("/chat", json={"message": "hello", "conversation_id": 123})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("error", resp.get_json())
 
 
 if __name__ == "__main__":

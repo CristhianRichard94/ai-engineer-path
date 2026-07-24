@@ -2,9 +2,11 @@
 test/test_new_conversation_route.py — Flask test-client coverage for
 ui/server.py's POST /new-conversation route.
 
-Verifies the route truncates transcript.jsonl, raises the cross-process
-reset signal only when a live JARVIS process is found (mirroring
-/restart's _do_restart() liveness check via psutil.process_iter), responds
+Verifies the route leaves transcript.jsonl untouched (it's now a
+permanent append-only log; the route only resets the in-memory brain
+history/conversation_id), raises the cross-process reset signal only when
+a live JARVIS process is found (mirroring /restart's _do_restart()
+liveness check via psutil.process_iter), responds
 {"ok": true, "jarvis_running": bool}, and — unlike /restart's
 _do_restart() — never calls subprocess.Popen or terminates/kills the
 JARVIS process.
@@ -62,25 +64,31 @@ class TestNewConversationRoute(unittest.TestCase):
         if os.path.exists(self._tmp_reset):
             os.remove(self._tmp_reset)
 
-    def test_truncates_transcript_and_returns_ok_when_jarvis_running(self):
-        self.assertGreater(os.path.getsize(self._tmp_transcript), 0)
+    def test_does_not_touch_transcript_when_jarvis_running(self):
+        with open(self._tmp_transcript, "r", encoding="utf-8") as f:
+            original_content = f.read()
+        self.assertGreater(len(original_content), 0)
 
         with mock.patch("server._jarvis_is_running", return_value=True):
             resp = self.client.post("/new-conversation")
 
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.get_json(), {"ok": True, "jarvis_running": True})
-        self.assertEqual(os.path.getsize(self._tmp_transcript), 0)
+        with open(self._tmp_transcript, "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), original_content)
 
-    def test_truncates_transcript_and_returns_ok_when_jarvis_not_running(self):
-        self.assertGreater(os.path.getsize(self._tmp_transcript), 0)
+    def test_does_not_touch_transcript_when_jarvis_not_running(self):
+        with open(self._tmp_transcript, "r", encoding="utf-8") as f:
+            original_content = f.read()
+        self.assertGreater(len(original_content), 0)
 
         with mock.patch("server._jarvis_is_running", return_value=False):
             resp = self.client.post("/new-conversation")
 
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.get_json(), {"ok": True, "jarvis_running": False})
-        self.assertEqual(os.path.getsize(self._tmp_transcript), 0)
+        with open(self._tmp_transcript, "r", encoding="utf-8") as f:
+            self.assertEqual(f.read(), original_content)
 
     def test_raises_reset_signal_when_jarvis_running(self):
         self.assertFalse(os.path.exists(self._tmp_reset))
@@ -135,32 +143,20 @@ class TestNewConversationRoute(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.get_json(), {"ok": True, "jarvis_running": False})
 
-    def test_truncate_happens_while_chat_lock_is_held(self):
-        real_open = open
+    def test_reset_history_happens_while_chat_lock_is_held(self):
+        mock_brain = mock.MagicMock()
         lock_states = []
 
-        def spy_open(*args, **kwargs):
-            if args and args[0] == self._tmp_transcript:
-                lock_states.append(server_module._chat_lock.locked())
-            return real_open(*args, **kwargs)
+        def spy_reset_history():
+            lock_states.append(server_module._chat_lock.locked())
 
-        with mock.patch("builtins.open", side_effect=spy_open):
-            resp = self.client.post("/new-conversation")
+        mock_brain.reset_history.side_effect = spy_reset_history
+        server_module._brain = mock_brain
+
+        resp = self.client.post("/new-conversation")
 
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(lock_states, [True])
-
-    def test_transcript_write_failure_returns_generic_error_not_path(self):
-        with mock.patch("builtins.open", side_effect=PermissionError(
-            "[Errno 13] Permission denied: 'C:\\\\Users\\\\secret\\\\transcript.jsonl'"
-        )):
-            resp = self.client.post("/new-conversation")
-
-        self.assertEqual(resp.status_code, 500)
-        body = resp.get_json()
-        self.assertEqual(body, {"ok": False, "error": "failed to clear transcript"})
-        self.assertNotIn("secret", str(body))
-        self.assertNotIn("C:\\", str(body))
 
 
 if __name__ == "__main__":

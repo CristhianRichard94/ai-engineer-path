@@ -61,6 +61,26 @@ def _get_chat_components():
         _router = IntentRouter()
     return _brain, _router
 
+
+def _resume_conversation(brain, conversation_id):
+    """Reconstruct brain.history from transcript.jsonl lines tagged with
+    `conversation_id`, capped to brain.max_history turns, and point
+    brain.conversation_id at it so subsequent appends land in the same
+    conversation.
+
+    Note: transcript.jsonl only ever stores plain spoken text, so this
+    loses the classifier's raw-JSON-assistant-turn shape - resumed history
+    reads as plain chat turns even for past action-intent turns. Accepted
+    simplification, must only be called while holding _chat_lock.
+    """
+    entries = _read_transcript(limit=None, conversation_id=conversation_id)
+    history = [
+        {"role": e["role"], "content": e["text"]}
+        for e in entries if e.get("role") in ("user", "assistant")
+    ][-brain.max_history:]
+    brain.history = history
+    brain.conversation_id = conversation_id
+
 PORT = int(os.getenv("JARVIS_UI_PORT", "5151"))
 
 _STALE_SECONDS = 10
@@ -103,8 +123,16 @@ def _read_state():
     return data
 
 
-def _read_transcript(limit=_TRANSCRIPT_MAX_ENTRIES):
-    """Return the last `limit` transcript entries, oldest first.
+def _read_transcript(limit=_TRANSCRIPT_MAX_ENTRIES, conversation_id=None):
+    """Return transcript entries, oldest first.
+
+    `limit` caps the number of entries returned (the most recent `limit`);
+    pass `limit=None` for no cap (returns everything). When
+    `conversation_id` is given, entries are filtered to that conversation
+    *before* the limit is applied, so a long-running conversation isn't
+    starved by unrelated lines from other conversations. When
+    `conversation_id` is None, all entries are considered (today's
+    behavior for the unscoped case).
 
     Tolerates a missing file (no conversation yet) and skips any malformed
     lines rather than failing the whole request.
@@ -120,12 +148,17 @@ def _read_transcript(limit=_TRANSCRIPT_MAX_ENTRIES):
                 if not line:
                     continue
                 try:
-                    entries.append(json.loads(line))
+                    entry = json.loads(line)
                 except json.JSONDecodeError:
                     continue
+                if conversation_id is not None and entry.get("conversation_id") != conversation_id:
+                    continue
+                entries.append(entry)
     except OSError:
         return []
 
+    if limit is None:
+        return entries
     return entries[-limit:]
 
 
@@ -183,7 +216,42 @@ def state_stream():
 
 @app.route("/transcript")
 def transcript():
-    return jsonify(_read_transcript())
+    conversation_id = request.args.get("conversation_id")
+    if not conversation_id and _brain is not None:
+        conversation_id = _brain.conversation_id
+    return jsonify(_read_transcript(conversation_id=conversation_id))
+
+
+@app.route("/conversations")
+def conversations():
+    """List past conversations derived from transcript.jsonl by grouping
+    entries by conversation_id, in chronological order of first
+    appearance. Untagged (legacy or voice-loop) lines have no
+    conversation_id and are skipped rather than forming a bogus group."""
+    entries = _read_transcript(limit=None, conversation_id=None)
+    groups = {}
+    order = []
+    for e in entries:
+        if not isinstance(e, dict) or "ts" not in e or "role" not in e:
+            continue
+        cid = e.get("conversation_id")
+        if cid is None:
+            continue
+        if cid not in groups:
+            groups[cid] = {
+                "conversation_id": cid,
+                "first_ts": e["ts"],
+                "last_ts": e["ts"],
+                "turn_count": 0,
+                "preview": None,
+            }
+            order.append(cid)
+        g = groups[cid]
+        g["last_ts"] = e["ts"]
+        g["turn_count"] += 1
+        if g["preview"] is None and e.get("role") == "user":
+            g["preview"] = e.get("text", "")[:80]
+    return jsonify([groups[cid] for cid in order])
 
 
 @app.route("/chat", methods=["POST"])
@@ -198,9 +266,15 @@ def chat():
     if len(message) > _CHAT_MESSAGE_MAX_CHARS:
         return jsonify({"error": "message is too long"}), 400
 
+    resume_id = body.get("conversation_id")
+    if resume_id is not None and not isinstance(resume_id, str):
+        return jsonify({"error": "conversation_id must be a string"}), 400
+
     try:
         with _chat_lock:
             brain, router = _get_chat_components()
+            if resume_id and resume_id != brain.conversation_id:
+                _resume_conversation(brain, resume_id)
             parsed = brain.think(message)
             reply = router.dispatch(parsed, raw_text=message)
 
@@ -238,17 +312,9 @@ def restart():
 
 @app.route("/new-conversation", methods=["POST"])
 def new_conversation():
-    try:
-        with _chat_lock:
-            with open(TRANSCRIPT_FILE, "w", encoding="utf-8"):
-                pass  # truncate
-            if _brain is not None:
-                _brain.reset_history()
-    except OSError as e:
-        # Don't leak local filesystem paths (e.g. Windows PermissionError
-        # messages embed the full path) into the HTTP response body.
-        print("[NEW-CONVERSATION] Failed to truncate transcript.jsonl: {}".format(e))
-        return jsonify({"ok": False, "error": "failed to clear transcript"}), 500
+    with _chat_lock:
+        if _brain is not None:
+            _brain.reset_history()
 
     jarvis_running = _jarvis_is_running()
     if jarvis_running:
