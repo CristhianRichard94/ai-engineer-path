@@ -135,6 +135,21 @@ class TestNewConversationRoute(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.get_json(), {"ok": True, "jarvis_running": False})
 
+    def test_truncate_happens_while_chat_lock_is_held(self):
+        real_open = open
+        lock_states = []
+
+        def spy_open(*args, **kwargs):
+            if args and args[0] == self._tmp_transcript:
+                lock_states.append(server_module._chat_lock.locked())
+            return real_open(*args, **kwargs)
+
+        with mock.patch("builtins.open", side_effect=spy_open):
+            resp = self.client.post("/new-conversation")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(lock_states, [True])
+
     def test_transcript_write_failure_returns_generic_error_not_path(self):
         with mock.patch("builtins.open", side_effect=PermissionError(
             "[Errno 13] Permission denied: 'C:\\\\Users\\\\secret\\\\transcript.jsonl'"

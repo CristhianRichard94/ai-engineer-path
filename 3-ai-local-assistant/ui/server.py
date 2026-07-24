@@ -239,17 +239,16 @@ def restart():
 @app.route("/new-conversation", methods=["POST"])
 def new_conversation():
     try:
-        with open(TRANSCRIPT_FILE, "w", encoding="utf-8"):
-            pass  # truncate
+        with _chat_lock:
+            with open(TRANSCRIPT_FILE, "w", encoding="utf-8"):
+                pass  # truncate
+            if _brain is not None:
+                _brain.reset_history()
     except OSError as e:
         # Don't leak local filesystem paths (e.g. Windows PermissionError
         # messages embed the full path) into the HTTP response body.
         print("[NEW-CONVERSATION] Failed to truncate transcript.jsonl: {}".format(e))
         return jsonify({"ok": False, "error": "failed to clear transcript"}), 500
-
-    with _chat_lock:
-        if _brain is not None:
-            _brain.reset_history()
 
     jarvis_running = _jarvis_is_running()
     if jarvis_running:
