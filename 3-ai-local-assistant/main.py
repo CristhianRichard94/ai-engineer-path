@@ -25,16 +25,36 @@ from stt      import SpeechTranscriber
 from tts      import Speaker
 from brain    import JarvisBrain
 from router   import IntentRouter
-from state    import write_state
+from state    import write_state, consume_history_reset
 
 load_dotenv()
 
 MAX_TURNS_PER_SESSION = 20   # safety cap before re-requesting wake word
 
 
+def _apply_pending_history_reset(brain):
+    """Check for a pending cross-process history-reset request and apply it.
+
+    Returns True if a reset was pending (and has now been applied), else
+    False. Shared by the wake-word loop and run_session() so there is a
+    single place that consumes the signal and clears brain.history.
+    """
+    if consume_history_reset():
+        brain.history = []
+        return True
+    return False
+
+
 def run_session(stt, brain, router, speaker):
     """Single conversation session (one wake-word activation)."""
     for turn in range(MAX_TURNS_PER_SESSION):
+        # ── New Conversation requested mid-session? ────────────────
+        # Poll every turn (not just once before the session starts) so
+        # clicking "New Conversation" actually interrupts a live,
+        # multi-turn session instead of silently queuing until it ends.
+        if _apply_pending_history_reset(brain):
+            return   # back to wake-word listening
+
         # ── Listen ──────────────────────────────────────────────────
         command = stt.capture_and_transcribe()
         if not command:
@@ -81,6 +101,7 @@ def main():
         while True:
             # ── Wait for "Hey JARVIS" ────────────────────────────
             wake.listen_for_wake()
+            _apply_pending_history_reset(brain)
             time.sleep(0.4)
             speaker.speak("Yes, sir.")
 

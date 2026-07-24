@@ -17,6 +17,7 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file
 STATE_FILE = os.path.join(_REPO_ROOT, "state.json")
 TRANSCRIPT_FILE = os.path.join(_REPO_ROOT, "transcript.jsonl")
 CLAUDE_AUDIT_FILE = os.path.join(_REPO_ROOT, "claude_cli_audit.jsonl")
+RESET_SIGNAL_FILE = os.path.join(_REPO_ROOT, "reset_signal")
 
 
 def write_state(state: str, detail: str = "", amplitude: float = None):
@@ -74,6 +75,39 @@ def append_transcript(role: str, text: str):
     except OSError as e:
         # Best-effort: transcript logging should never crash JARVIS itself.
         print("[STATE] Failed to append transcript.jsonl: {}".format(e))
+
+
+def request_history_reset():
+    """Create (or touch) the reset signal file.
+
+    Cross-process signal: ui/server.py (Flask) and main.py (voice loop) are
+    separate processes sharing only the filesystem. main.py polls for this
+    file via consume_history_reset() to know when to clear its in-memory
+    conversation history.
+    """
+    try:
+        with open(RESET_SIGNAL_FILE, "a", encoding="utf-8"):
+            os.utime(RESET_SIGNAL_FILE, None)
+    except OSError as e:
+        print("[STATE] Failed to write reset_signal: {}".format(e))
+
+
+def consume_history_reset() -> bool:
+    """Return True and delete the reset signal file if present, else False.
+
+    Wraps the delete in try/except so a concurrent delete (e.g. two pollers,
+    or the file vanishing between the exists check and the remove) never
+    crashes the caller.
+    """
+    if not os.path.exists(RESET_SIGNAL_FILE):
+        return False
+
+    try:
+        os.remove(RESET_SIGNAL_FILE)
+    except OSError:
+        pass
+
+    return True
 
 
 def append_claude_audit(prompt: str, stdout: str, stderr: str, returncode):

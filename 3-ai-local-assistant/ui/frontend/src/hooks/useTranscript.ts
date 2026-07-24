@@ -14,18 +14,22 @@ const POLL_INTERVAL_MS = 1500
  * file was rotated/truncated (fewer entries than previously seen), the
  * list is replaced from scratch rather than appended.
  */
-export function useTranscript() {
+export function useTranscript(paused = false) {
   const [entries, setEntries] = useState<TranscriptEntry[]>([])
   const seenCountRef = useRef(0)
+  const pausedRef = useRef(paused)
+  pausedRef.current = paused
 
   useEffect(() => {
     let cancelled = false
 
     async function poll() {
+      if (pausedRef.current) return
+
       try {
         const res = await fetch('/transcript')
         const data = await res.json()
-        if (cancelled || !Array.isArray(data)) return
+        if (cancelled || pausedRef.current || !Array.isArray(data)) return
 
         if (data.length < seenCountRef.current) {
           seenCountRef.current = 0
@@ -46,5 +50,15 @@ export function useTranscript() {
     }
   }, [])
 
-  return entries
+  const clear = () => {
+    seenCountRef.current = 0
+    setEntries([])
+  }
+
+  const restore = (snapshot: TranscriptEntry[]) => {
+    setEntries(snapshot)
+    seenCountRef.current = snapshot.length
+  }
+
+  return { entries, clear, restore }
 }

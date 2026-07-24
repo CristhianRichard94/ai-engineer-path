@@ -13,7 +13,8 @@ const RESTART_TIMEOUT_MS = 15000
  */
 export function useRestart(
   currentState: string,
-  applyState: (state: string, detail: string) => void
+  applyState: (state: string, detail: string) => void,
+  isBusy: boolean
 ) {
   const [uiState, setUiState] = useState<RestartUiState>('idle')
   const [confirmSecondsLeft, setConfirmSecondsLeft] = useState(0)
@@ -114,6 +115,8 @@ export function useRestart(
   }
 
   const handleClick = () => {
+    if (isBusy) return
+
     if (uiState === 'idle') {
       enterConfirmMode()
     } else if (uiState === 'confirm') {

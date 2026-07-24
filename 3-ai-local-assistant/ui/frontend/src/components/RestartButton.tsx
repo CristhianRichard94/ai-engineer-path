@@ -6,6 +6,7 @@ interface RestartButtonProps {
   confirmSecondsLeft: number
   onClick: () => void
   onKeyDown: (evt: KeyboardEvent<HTMLButtonElement>) => void
+  disabled?: boolean
 }
 
 export default function RestartButton({
@@ -13,9 +14,10 @@ export default function RestartButton({
   confirmSecondsLeft,
   onClick,
   onKeyDown,
+  disabled: externalDisabled = false,
 }: RestartButtonProps) {
   const className = `restart-btn state-${uiState}`
-  const disabled = uiState === 'restarting'
+  const disabled = externalDisabled || uiState === 'restarting'
 
   let label: string
   let ariaLabel: string | undefined

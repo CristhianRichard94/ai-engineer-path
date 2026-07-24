@@ -28,7 +28,7 @@ _MAIN_PY = os.path.join(_REPO_ROOT, "main.py")
 _DIST_DIR = os.path.join(_UI_DIR, "frontend", "dist")
 
 sys.path.append(os.path.join(_REPO_ROOT, "jarvis"))
-from state import STATE_FILE, TRANSCRIPT_FILE, write_state  # noqa: E402
+from state import STATE_FILE, TRANSCRIPT_FILE, write_state, request_history_reset  # noqa: E402
 
 app = Flask(__name__, static_folder=None)
 
@@ -156,18 +156,48 @@ def restart():
     return jsonify({"ok": True})
 
 
-def _do_restart():
-    write_state("restarting")
+@app.route("/new-conversation", methods=["POST"])
+def new_conversation():
+    try:
+        with open(TRANSCRIPT_FILE, "w", encoding="utf-8"):
+            pass  # truncate
+    except OSError as e:
+        # Don't leak local filesystem paths (e.g. Windows PermissionError
+        # messages embed the full path) into the HTTP response body.
+        print("[NEW-CONVERSATION] Failed to truncate transcript.jsonl: {}".format(e))
+        return jsonify({"ok": False, "error": "failed to clear transcript"}), 500
 
-    target = None
+    jarvis_running = _jarvis_is_running()
+    if jarvis_running:
+        # Only meaningful if a live process will actually consume it - a
+        # freshly started process already begins with empty brain.history,
+        # so writing a signal for it to find later would just be stale.
+        request_history_reset()
+
+    return jsonify({"ok": True, "jarvis_running": jarvis_running})
+
+
+def _find_jarvis_process():
+    """Return the live psutil.Process running main.py, or None if not found."""
     for proc in psutil.process_iter(["pid", "cmdline"]):
         try:
             cmdline = proc.info.get("cmdline") or []
             if any("main.py" in str(part) for part in cmdline):
-                target = proc
-                break
+                return proc
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
+    return None
+
+
+def _jarvis_is_running():
+    """True if a live process whose cmdline references main.py is found."""
+    return _find_jarvis_process() is not None
+
+
+def _do_restart():
+    write_state("restarting")
+
+    target = _find_jarvis_process()
 
     if target is not None:
         try:
