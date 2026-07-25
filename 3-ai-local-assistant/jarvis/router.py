@@ -198,7 +198,16 @@ class IntentRouter:
             "spotify"   : r"C:\Users\%USERNAME%\AppData\Roaming\Spotify\Spotify.exe",
         }
         exe = apps.get(p["app"].lower(), p["app"])
-        subprocess.Popen(exe, shell=True)
+        # List-form argv (no shell=True) — `exe` ultimately originates from
+        # GPT's intent-classification of user-controlled text (voice
+        # transcript / /chat message), so it must never be interpolated
+        # into a shell command string. CreateProcess still does a PATH
+        # search for a bare executable name (e.g. "notepad.exe") in list
+        # form on Windows, so this is not relying on shell built-ins.
+        # shell=True used to expand %USERNAME%-style env vars via cmd.exe;
+        # list-form Popen skips that, so expand them ourselves first.
+        exe = os.path.expandvars(exe)
+        subprocess.Popen([exe])
 
     def close_app(self, p):
         name = p["app"].lower().replace(".exe", "")
@@ -241,7 +250,10 @@ class IntentRouter:
         volume.SetMasterVolumeLevelScalar(level, None)
 
     def open_folder(self, p):
-        subprocess.Popen('explorer "{}"'.format(p["path"]))
+        # List-form argv (no shell string interpolation) — avoids shell
+        # metacharacter injection from a path containing e.g. `"`, `&`, `|`,
+        # since `p["path"]` ultimately originates from user-controlled text.
+        subprocess.Popen(["explorer", p["path"]])
 
     def play_spotify(self, p):
         query = p.get("query", "").strip()

@@ -32,10 +32,19 @@ UI_DIR = os.path.join(ROOT, "ui")
 if UI_DIR not in sys.path:
     sys.path.insert(0, UI_DIR)
 
+# `anthropic`/`openai` are only stubbed if genuinely unavailable —
+# unconditionally overwriting sys.modules here would clobber the real
+# package for other test modules (e.g. test_claude_client.py) that need
+# real anthropic exception types to construct.
+import importlib  # noqa: E402
 from unittest.mock import MagicMock  # noqa: E402
 for mod in ("pycaw", "pycaw.pycaw", "comtypes", "spotipy",
             "spotipy.oauth2", "spotipy.exceptions", "anthropic", "openai"):
-    if mod not in sys.modules:
+    if mod in sys.modules:
+        continue
+    try:
+        importlib.import_module(mod)
+    except ImportError:
         sys.modules[mod] = MagicMock()
 
 import server as server_module  # noqa: E402

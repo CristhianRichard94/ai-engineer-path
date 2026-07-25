@@ -21,10 +21,19 @@ if JARVIS_DIR not in sys.path:
     sys.path.insert(0, JARVIS_DIR)
 
 # Stub heavy optional packages before importing router so we never need them
-# installed in the test environment.
+# installed in the test environment. `anthropic`/`openai` are only stubbed
+# if genuinely unavailable — unconditionally overwriting sys.modules here
+# would clobber the real package for other test modules (e.g.
+# test_claude_client.py) that import this file first during collection and
+# need real anthropic exception types to construct.
+import importlib  # noqa: E402
 for mod in ("pycaw", "pycaw.pycaw", "comtypes", "spotipy",
             "spotipy.oauth2", "spotipy.exceptions", "anthropic"):
-    if mod not in sys.modules:
+    if mod in sys.modules:
+        continue
+    try:
+        importlib.import_module(mod)
+    except ImportError:
         sys.modules[mod] = MagicMock()
 
 import router as router_module
@@ -106,17 +115,38 @@ class TestOpenCloseApp(unittest.TestCase):
     @patch("router.subprocess.Popen")
     def test_open_app_known_app_uses_mapped_exe(self, mock_popen):
         self.router.open_app({"app": "notepad"})
-        mock_popen.assert_called_once_with("notepad.exe", shell=True)
+        mock_popen.assert_called_once_with(["notepad.exe"])
 
     @patch("router.subprocess.Popen")
     def test_open_app_unknown_app_passes_name_directly(self, mock_popen):
         self.router.open_app({"app": "my_custom_app.exe"})
-        mock_popen.assert_called_once_with("my_custom_app.exe", shell=True)
+        mock_popen.assert_called_once_with(["my_custom_app.exe"])
 
     @patch("router.subprocess.Popen")
     def test_open_app_case_insensitive(self, mock_popen):
         self.router.open_app({"app": "Notepad"})
-        mock_popen.assert_called_once_with("notepad.exe", shell=True)
+        mock_popen.assert_called_once_with(["notepad.exe"])
+
+    @patch("router.subprocess.Popen")
+    def test_open_app_does_not_use_shell(self, mock_popen):
+        """Hardening: no shell=True and no shell-string command — the exe
+        name ultimately originates from user-controlled text (voice
+        transcript / /chat message) via GPT's intent classification."""
+        self.router.open_app({"app": "; rm -rf / #"})
+        args, kwargs = mock_popen.call_args
+        self.assertIsInstance(args[0], list)
+        self.assertNotIn("shell", kwargs)
+
+    @patch("router.subprocess.Popen")
+    @patch.dict("router.os.environ", {"USERNAME": "testuser"})
+    def test_open_app_expands_env_vars(self, mock_popen):
+        """Regression: list-form Popen skips shell env-var expansion, so
+        %USERNAME%-style paths (e.g. spotify) must be expanded in Python
+        before being passed as argv, or the launch fails with WinError 2."""
+        self.router.open_app({"app": "spotify"})
+        args, _ = mock_popen.call_args
+        self.assertIn("testuser", args[0][0])
+        self.assertNotIn("%USERNAME%", args[0][0])
 
     @patch("router.psutil.process_iter")
     def test_close_app_kills_matching_process(self, mock_iter):
@@ -232,8 +262,18 @@ class TestOpenFolder(unittest.TestCase):
     def test_open_folder_calls_explorer(self, mock_popen):
         self.router.open_folder({"path": r"C:\Users\Cristhian\Documents"})
         mock_popen.assert_called_once_with(
-            r'explorer "C:\Users\Cristhian\Documents"'
+            ["explorer", r"C:\Users\Cristhian\Documents"]
         )
+
+    @patch("router.subprocess.Popen")
+    def test_open_folder_does_not_use_shell(self, mock_popen):
+        """Hardening: list-form argv avoids shell metacharacter injection
+        from a path containing quotes/`&`/`|` etc — `p["path"]` ultimately
+        originates from user-controlled text via GPT's intent parsing."""
+        self.router.open_folder({"path": r'C:\evil" & calc.exe & "'})
+        args, kwargs = mock_popen.call_args
+        self.assertIsInstance(args[0], list)
+        self.assertNotIn("shell", kwargs)
 
 
 # ════════════════════════════════════════════════════════════════════════

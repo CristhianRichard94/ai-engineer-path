@@ -1,6 +1,7 @@
 # wake_word.py - captures at the default mic's native rate, resampled to 16000 for the model
 import os
 import math
+import time
 import urllib.request
 import sounddevice as sd
 import numpy as np
@@ -59,6 +60,19 @@ class WakeWordDetector:
         self._resample_up   = self.model_rate // g
         self._resample_down = int(self.capture_rate) // g
 
+    def _update_device(self, device, capture_rate):
+        """Adopt a newly-resolved (device, capture_rate) pair: updates
+        self.device/self.capture_rate/self.chunk and the resample ratios
+        used by _resample(). Shared by both the stall-recovery path (mic
+        goes silent after a stream is open) and the open-failure retry
+        path (mic is gone/invalid before a stream can even be opened)."""
+        self.device = device
+        self.capture_rate = capture_rate
+        self.chunk = int(0.08 * self.capture_rate)
+        g = math.gcd(self.model_rate, int(self.capture_rate))
+        self._resample_up = self.model_rate // g
+        self._resample_down = int(self.capture_rate) // g
+
     def _resample(self, audio):
         if self._resample_up == self._resample_down:
             return audio.astype(np.int16)
@@ -88,14 +102,37 @@ class WakeWordDetector:
             warned_this_stall = False
             reopen_with_new_device = False
 
-            with sd.InputStream(
-                samplerate=self.capture_rate,
-                channels=1,
-                dtype='int16',
-                blocksize=self.chunk,
-                device=self.device,
-                callback=_callback,
-            ):
+            # Opening the stream (constructing sd.InputStream) can itself
+            # fail — e.g. the resolved device index has since gone invalid
+            # (unplugged headset, Windows device-index churn) — distinct
+            # from the stall-recovery path below, which only handles a
+            # stream that opened fine but later goes silent. Retry with a
+            # short backoff rather than letting this take down the whole
+            # process; a dead/missing mic should degrade to "keep waiting
+            # and retrying", never crash JARVIS.
+            stream = None
+            while stream is None:
+                try:
+                    stream = sd.InputStream(
+                        samplerate=self.capture_rate,
+                        channels=1,
+                        dtype='int16',
+                        blocksize=self.chunk,
+                        device=self.device,
+                        callback=_callback,
+                    )
+                except Exception as e:
+                    print("[WAKE] Failed to open input device {}: {} — "
+                          "re-scanning for a microphone...".format(self.device, e))
+                    try:
+                        new_device, new_rate = find_input_device()
+                        self._update_device(new_device, new_rate)
+                    except NoMicrophoneError as mic_err:
+                        print("[WAKE] No microphone available: {} — "
+                              "will keep retrying...".format(mic_err))
+                    time.sleep(2)
+
+            with stream:
                 while True:
                     try:
                         raw = q.get(timeout=_WAKE_QUEUE_TIMEOUT_S)
@@ -108,12 +145,7 @@ class WakeWordDetector:
                             print("[WAKE] No audio from input device — check microphone.")
                             new_device, new_rate = find_input_device()
                             if new_device != self.device or new_rate != self.capture_rate:
-                                self.device = new_device
-                                self.capture_rate = new_rate
-                                self.chunk = int(0.08 * self.capture_rate)
-                                g = math.gcd(self.model_rate, int(self.capture_rate))
-                                self._resample_up = self.model_rate // g
-                                self._resample_down = int(self.capture_rate) // g
+                                self._update_device(new_device, new_rate)
                                 reopen_with_new_device = True
                                 break
                         continue

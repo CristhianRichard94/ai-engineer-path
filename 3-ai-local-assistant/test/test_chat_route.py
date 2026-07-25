@@ -32,10 +32,19 @@ if UI_DIR not in sys.path:
 
 # Stub heavy optional packages before importing router/server so we never
 # need them installed in the test environment (mirrors test_router.py).
+# `anthropic`/`openai` are only stubbed if genuinely unavailable —
+# unconditionally overwriting sys.modules here would clobber the real
+# package for other test modules (e.g. test_claude_client.py) that need
+# real anthropic exception types to construct.
+import importlib  # noqa: E402
 from unittest.mock import MagicMock  # noqa: E402
 for mod in ("pycaw", "pycaw.pycaw", "comtypes", "spotipy",
             "spotipy.oauth2", "spotipy.exceptions", "anthropic", "openai"):
-    if mod not in sys.modules:
+    if mod in sys.modules:
+        continue
+    try:
+        importlib.import_module(mod)
+    except ImportError:
         sys.modules[mod] = MagicMock()
 
 import state as state_module  # noqa: E402

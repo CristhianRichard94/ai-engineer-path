@@ -117,7 +117,18 @@ def main():
     try:
         while True:
             # ── Wait for "Hey JARVIS" ────────────────────────────
-            wake.listen_for_wake()
+            # Belt-and-suspenders: listen_for_wake() already retries
+            # internally on a dead/missing mic and should never raise, but
+            # if it somehow does, a mic problem must never crash the whole
+            # process — log it, back off briefly, and keep going.
+            try:
+                wake.listen_for_wake()
+            except Exception as e:
+                print("[JARVIS] listen_for_wake() raised unexpectedly: {} — "
+                      "retrying...".format(e))
+                time.sleep(2)
+                continue
+
             _apply_pending_history_reset(brain)
             time.sleep(0.4)
             speaker.speak("Yes, sir.")

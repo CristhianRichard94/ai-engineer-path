@@ -23,6 +23,7 @@ for mod in ("sounddevice", "openwakeword", "openwakeword.model"):
 
 import wake_word as ww_module
 from wake_word import WakeWordDetector
+from audio_input import NoMicrophoneError
 
 
 def _make_detector(default_index, device_info):
@@ -204,6 +205,133 @@ class TestListenForWake(unittest.TestCase):
             # initial InputStream call should have happened.
             mock_find.assert_called_once()
             self.assertEqual(mock_sd.InputStream.call_count, 1)
+
+
+class TestStreamOpenFailure(unittest.TestCase):
+
+    def test_open_failure_retries_and_succeeds(self):
+        """sd.InputStream() raising on the first attempt must not crash
+        listen_for_wake() — it should re-resolve the mic and retry."""
+        detector = _make_detector(11, {"name": "x", "default_samplerate": 48000.0})
+
+        mock_stream = MagicMock()
+        mock_stream.__enter__.return_value = mock_stream
+
+        import queue as queue_module
+
+        class _StopTest(Exception):
+            pass
+
+        def _fake_get(timeout=None):
+            raise _StopTest()
+
+        attempts = {"n": 0}
+
+        def _ctor(*args, **kwargs):
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                raise Exception("Device unavailable [PaErrorCode -9985]")
+            return mock_stream
+
+        with patch("wake_word.sd") as mock_sd, \
+             patch("wake_word.find_input_device") as mock_find, \
+             patch("wake_word.time.sleep") as mock_sleep, \
+             patch("builtins.print") as mock_print:
+            mock_sd.InputStream.side_effect = _ctor
+            mock_find.return_value = (12, 44100.0)
+
+            with patch("queue.Queue") as mock_queue_cls:
+                mock_queue = MagicMock()
+                mock_queue.get.side_effect = _fake_get
+                mock_queue_cls.return_value = mock_queue
+
+                with self.assertRaises(_StopTest):
+                    detector.listen_for_wake()
+
+            self.assertEqual(mock_sd.InputStream.call_count, 2)
+            mock_find.assert_called_once()
+            mock_sleep.assert_called_once_with(2)
+            self.assertEqual(detector.device, 12)
+            self.assertEqual(detector.capture_rate, 44100.0)
+            printed = [str(c.args[0]) for c in mock_print.call_args_list if c.args]
+            self.assertTrue(any("Failed to open input device" in p for p in printed))
+
+    def test_open_failure_keeps_retrying_with_backoff(self):
+        """A genuinely dead mic (open keeps failing) must not spin-loop or
+        crash — it should back off between attempts and keep retrying."""
+        detector = _make_detector(11, {"name": "x", "default_samplerate": 48000.0})
+
+        _MAX_ATTEMPTS = 5
+        attempts = {"n": 0}
+
+        # BaseException (not Exception) so it isn't swallowed by the
+        # open-retry loop's own `except Exception` — this lets the test
+        # deterministically stop the (otherwise infinite) retry loop after
+        # a bounded number of attempts.
+        class _StopTest(BaseException):
+            pass
+
+        def _ctor(*args, **kwargs):
+            attempts["n"] += 1
+            if attempts["n"] >= _MAX_ATTEMPTS:
+                raise _StopTest()
+            raise Exception("Device unavailable [PaErrorCode -9985]")
+
+        with patch("wake_word.sd") as mock_sd, \
+             patch("wake_word.find_input_device") as mock_find, \
+             patch("wake_word.time.sleep") as mock_sleep, \
+             patch("builtins.print"):
+            mock_sd.InputStream.side_effect = _ctor
+            mock_find.return_value = (11, 48000.0)
+
+            with self.assertRaises(_StopTest):
+                detector.listen_for_wake()
+
+            self.assertEqual(mock_sd.InputStream.call_count, _MAX_ATTEMPTS)
+            self.assertEqual(mock_sleep.call_count, _MAX_ATTEMPTS - 1)
+
+    def test_open_failure_with_no_microphone_does_not_propagate(self):
+        """find_input_device() raising NoMicrophoneError during the
+        open-retry path must not propagate out of listen_for_wake() — it
+        should log and keep retrying with backoff, in case the mic is
+        reconnected later."""
+        detector = _make_detector(11, {"name": "x", "default_samplerate": 48000.0})
+
+        _MAX_ATTEMPTS = 4
+        attempts = {"n": 0}
+
+        # BaseException (not Exception) so it isn't swallowed by the
+        # open-retry loop's own `except Exception`.
+        class _StopTest(BaseException):
+            pass
+
+        def _ctor(*args, **kwargs):
+            attempts["n"] += 1
+            if attempts["n"] >= _MAX_ATTEMPTS:
+                raise _StopTest()
+            raise Exception("Device unavailable [PaErrorCode -9985]")
+
+        def _find_side_effect():
+            raise NoMicrophoneError("No microphone found.")
+
+        with patch("wake_word.sd") as mock_sd, \
+             patch("wake_word.find_input_device") as mock_find, \
+             patch("wake_word.time.sleep") as mock_sleep, \
+             patch("builtins.print") as mock_print:
+            mock_sd.InputStream.side_effect = _ctor
+            mock_find.side_effect = _find_side_effect
+
+            with self.assertRaises(_StopTest):
+                detector.listen_for_wake()
+
+            self.assertEqual(mock_sd.InputStream.call_count, _MAX_ATTEMPTS)
+            self.assertEqual(mock_sleep.call_count, _MAX_ATTEMPTS - 1)
+            # Device/rate remain unchanged since re-resolution never
+            # succeeded.
+            self.assertEqual(detector.device, 11)
+            self.assertEqual(detector.capture_rate, 48000.0)
+            printed = [str(c.args[0]) for c in mock_print.call_args_list if c.args]
+            self.assertTrue(any("No microphone available" in p for p in printed))
 
 
 if __name__ == "__main__":
