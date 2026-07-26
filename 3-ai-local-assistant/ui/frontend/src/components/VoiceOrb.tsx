@@ -95,7 +95,11 @@ export default function VoiceOrb({ state, amplitude, size = 'panel', theme = 'cy
   // dragging, so it "feels" spinnable without a physics engine.
   const wrapperRef = useRef<HTMLDivElement>(null)
   const [rotation, setRotation] = useState(0)
+  const rotationTweenTarget = useRef({ value: 0 })
   const dragState = useRef<{ startAngle: number; startRotation: number } | null>(null)
+  // last pointer sample during drag, used to compute release velocity (deg/ms)
+  const lastSample = useRef<{ time: number; rotation: number } | null>(null)
+  const velocity = useRef(0)
 
   const angleFromCenter = (clientX: number, clientY: number) => {
     const el = wrapperRef.current
@@ -108,13 +112,24 @@ export default function VoiceOrb({ state, amplitude, size = 'panel', theme = 'cy
 
   const handlePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    gsap.killTweensOf(rotationTweenTarget.current)
     dragState.current = { startAngle: angleFromCenter(e.clientX, e.clientY), startRotation: rotation }
+    lastSample.current = { time: performance.now(), rotation }
+    velocity.current = 0
   }
 
   const handlePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (!dragState.current) return
     const current = angleFromCenter(e.clientX, e.clientY)
-    setRotation(dragState.current.startRotation + (current - dragState.current.startAngle))
+    const nextRotation = dragState.current.startRotation + (current - dragState.current.startAngle)
+    setRotation(nextRotation)
+
+    const now = performance.now()
+    if (lastSample.current) {
+      const dt = now - lastSample.current.time
+      if (dt > 0) velocity.current = (nextRotation - lastSample.current.rotation) / dt
+    }
+    lastSample.current = { time: now, rotation: nextRotation }
   }
 
   const handlePointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -122,6 +137,20 @@ export default function VoiceOrb({ state, amplitude, size = 'panel', theme = 'cy
     if ((e.target as HTMLElement).hasPointerCapture?.(e.pointerId)) {
       ;(e.target as HTMLElement).releasePointerCapture(e.pointerId)
     }
+
+    // deg/ms threshold below which a release is treated as a deliberate stop, not a flick
+    const v = velocity.current
+    if (Math.abs(v) < 0.05) return
+
+    const throwFactor = 180 // ponytail: tuned by feel, not physical units
+    const duration = Math.min(2.2, Math.max(0.6, Math.abs(v) * 0.8))
+    rotationTweenTarget.current.value = rotation
+    gsap.to(rotationTweenTarget.current, {
+      value: rotation + v * throwFactor,
+      duration,
+      ease: 'power2.out',
+      onUpdate: () => setRotation(rotationTweenTarget.current.value),
+    })
   }
 
   useEffect(() => {
@@ -148,6 +177,7 @@ export default function VoiceOrb({ state, amplitude, size = 'panel', theme = 'cy
   useEffect(() => {
     return () => {
       gsap.killTweensOf(ampTweenTarget.current)
+      gsap.killTweensOf(rotationTweenTarget.current)
     }
   }, [])
 

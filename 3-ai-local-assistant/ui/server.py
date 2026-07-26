@@ -367,9 +367,22 @@ def _do_restart():
     )
 
 
+def _open_in_chrome(url):
+    # ponytail: falls back to default browser if Chrome isn't registered
+    chrome_paths = [
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    ]
+    for path in chrome_paths:
+        if os.path.exists(path):
+            webbrowser.get('"{}" %s'.format(path)).open(url)
+            return
+    webbrowser.open(url)
+
+
 def main():
     url = "http://127.0.0.1:{}/".format(PORT)
-    threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+    threading.Timer(1.0, lambda: _open_in_chrome(url)).start()
     app.run(host="127.0.0.1", port=PORT, threaded=True)
 
 
