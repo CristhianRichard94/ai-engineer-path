@@ -395,7 +395,13 @@ class IntentRouter:
         MCP-tool-driven daily_task_reminder path still uses _call_claude_cli.
         """
         if self._claude is None:
-            return "Claude isn't configured, sir. Please add ANTHROPIC_API_KEY to the .env file."
+            # No ANTHROPIC_API_KEY -> fall back to the Claude Code CLI
+            # (same path daily_task_reminder uses), so ask_claude still
+            # works via whatever `claude` is already logged into, with
+            # project-tracker MCP access for task-related questions.
+            return self._call_claude_cli(
+                query, allowed_tools=["mcp__project-tracker__list_open_tasks"]
+            )
 
         top_k = int(os.getenv("JARVIS_VAULT_TOP_K", "4"))
         chunks = retrieve(query, top_k=top_k)
@@ -422,9 +428,11 @@ class IntentRouter:
         Runs in `--permission-mode plan` (read-only planning, no file/tool
         mutations) rather than trusting the user's ambient global Claude
         Code permission config, since this call path is triggered by
-        unattended voice/ambient audio. Callers that need a specific MCP
-        tool (e.g. daily_task_reminder's project-tracker read tool) can
-        pass `allowed_tools` to additionally scope via --allowedTools.
+        unattended voice/ambient audio. Plan mode never *executes* tools at
+        all though - it only plans - so callers that pass `allowed_tools`
+        (meaning they need that tool to actually run, e.g.
+        daily_task_reminder's project-tracker read tool) get `default` mode
+        instead, scoped tightly via --allowedTools to just those tools.
         Every invocation is recorded, full and untruncated, to
         claude_cli_audit.jsonl via state.append_claude_audit for
         after-the-fact review.
@@ -432,7 +440,12 @@ class IntentRouter:
         if not shutil.which("claude"):
             return "Claude Code isn't installed, sir."
 
-        cmd = ["claude", "-p", prompt, "--permission-mode", "plan"]
+        # "plan" mode never executes tools, only plans - useless for a
+        # caller that actually needs a tool's result (e.g. the todo list).
+        # "default" + a tight --allowedTools scope lets exactly those tools
+        # run without opening up file/shell mutations generally.
+        mode = "default" if allowed_tools else "plan"
+        cmd = ["claude", "-p", prompt, "--permission-mode", mode]
         if allowed_tools:
             cmd += ["--allowedTools"] + list(allowed_tools)
 

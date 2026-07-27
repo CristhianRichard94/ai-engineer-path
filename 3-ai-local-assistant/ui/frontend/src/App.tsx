@@ -216,67 +216,76 @@ function App() {
     <div className="control-column">
       <ConnectionBanner connected={connected} />
 
-      <VoiceOrb state={state as VoiceOrbProps['state']} amplitude={amplitude} />
+      <VoiceOrb state={state as VoiceOrbProps["state"]} amplitude={amplitude} />
 
       <StatusText
         state={state}
         detail={detail}
         override={restartOverride ?? newConvOverride ?? resumeOverride}
       />
-
-      <NewConversationButton
-        uiState={newConvUiState}
-        confirmSecondsLeft={newConvConfirmSecondsLeft}
-        onClick={handleNewConversationClick}
-        onKeyDown={handleNewConvKeyDown}
-        disabled={newConvDisabled}
-      />
-
-      <HistoryButton open={panelMode === 'list'} onClick={handleHistoryButtonClick} disabled={historyDisabled} />
-
-      <RestartButton
-        uiState={restartUiState}
-        confirmSecondsLeft={restartConfirmSecondsLeft}
-        onClick={handleRestartClick}
-        onKeyDown={handleRestartKeyDown}
-        disabled={restartDisabled}
-      />
-
-      {panelMode === 'live' && <TranscriptPanel entries={entries} />}
-
-      {panelMode === 'list' && (
-        <HistoryListPanel
-          status={conversationsHook.status}
-          conversations={conversationsHook.conversations}
-          activeConversationId={activeConversationId}
-          onSelect={handleSelectConversation}
-          onRetry={conversationsHook.refetch}
+      <div>
+        <NewConversationButton
+          uiState={newConvUiState}
+          confirmSecondsLeft={newConvConfirmSecondsLeft}
+          onClick={handleNewConversationClick}
+          onKeyDown={handleNewConvKeyDown}
+          disabled={newConvDisabled}
         />
-      )}
 
-      {panelMode === 'historical' && selectedConversation && (
-        <HistoricalTranscriptPanel
-          status={conversationView.status}
-          entries={conversationView.entries}
-          conversationId={selectedConversation.conversation_id}
-          firstTs={selectedConversation.first_ts}
-          onBack={handleBackToLive}
-          onRetry={() => conversationView.load(selectedConversation.conversation_id)}
-          resumeUiState={resumeUiState}
-          resumeConfirmSecondsLeft={resumeConfirmSecondsLeft}
-          onResumeClick={handleResumeClick}
-          onResumeKeyDown={handleResumeKeyDown}
-          resumeDisabled={!connected || restartUiState !== 'idle' || newConvBusy}
+        <HistoryButton
+          open={panelMode === "list"}
+          onClick={handleHistoryButtonClick}
+          disabled={historyDisabled}
         />
-      )}
+
+        <RestartButton
+          uiState={restartUiState}
+          confirmSecondsLeft={restartConfirmSecondsLeft}
+          onClick={handleRestartClick}
+          onKeyDown={handleRestartKeyDown}
+          disabled={restartDisabled}
+        />
+
+        {panelMode === "live" && <TranscriptPanel entries={entries} />}
+
+        {panelMode === "list" && (
+          <HistoryListPanel
+            status={conversationsHook.status}
+            conversations={conversationsHook.conversations}
+            activeConversationId={activeConversationId}
+            onSelect={handleSelectConversation}
+            onRetry={conversationsHook.refetch}
+          />
+        )}
+
+        {panelMode === "historical" && selectedConversation && (
+          <HistoricalTranscriptPanel
+            status={conversationView.status}
+            entries={conversationView.entries}
+            conversationId={selectedConversation.conversation_id}
+            firstTs={selectedConversation.first_ts}
+            onBack={handleBackToLive}
+            onRetry={() =>
+              conversationView.load(selectedConversation.conversation_id)
+            }
+            resumeUiState={resumeUiState}
+            resumeConfirmSecondsLeft={resumeConfirmSecondsLeft}
+            onResumeClick={handleResumeClick}
+            onResumeKeyDown={handleResumeKeyDown}
+            resumeDisabled={
+              !connected || restartUiState !== "idle" || newConvBusy
+            }
+          />
+        )}
+      </div>
 
       <ChatInput
-        viewingHistory={panelMode === 'historical'}
+        viewingHistory={panelMode === "historical"}
         pendingResumeId={pendingResumeId}
         onResumeSuccess={handleResumeSuccess}
       />
     </div>
-  )
+  );
 }
 
 export default App

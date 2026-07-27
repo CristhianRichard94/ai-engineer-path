@@ -45,10 +45,24 @@ def write_state(state: str, detail: str = "", amplitude: float = None):
     try:
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(payload, f)
-        os.replace(tmp_path, STATE_FILE)
     except OSError as e:
-        # Best-effort: state reporting should never crash JARVIS itself.
-        print("[STATE] Failed to write state.json: {}".format(e))
+        print("[STATE] Failed to write state.json.tmp: {}".format(e))
+        return
+
+    # os.replace() can hit WinError 5 (access denied) if ui/server.py's SSE
+    # poller has the target file open for read at the exact instant of the
+    # rename - Windows file handles aren't FILE_SHARE_DELETE by default.
+    # That's a sub-millisecond race, not a real failure, so retry briefly
+    # before giving up.
+    for attempt in range(3):
+        try:
+            os.replace(tmp_path, STATE_FILE)
+            return
+        except OSError as e:
+            if attempt == 2:
+                print("[STATE] Failed to write state.json: {}".format(e))
+            else:
+                time.sleep(0.02)
 
 
 def append_transcript(role: str, text: str, conversation_id: str = None):

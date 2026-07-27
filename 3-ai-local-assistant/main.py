@@ -65,9 +65,10 @@ def run_session(stt, brain, router, speaker):
         # ── Listen ──────────────────────────────────────────────────
         command = stt.capture_and_transcribe()
         if not command:
-            time.sleep(0.4)
-            speaker.speak("I didn't catch that, sir.")
-            continue
+            # No speech - say nothing (talking into silence is worse than
+            # staying quiet) and go back to sleep rather than re-listening
+            # in a loop.
+            return
 
         # ── Think ───────────────────────────────────────────────────
         parsed = brain.think(command)

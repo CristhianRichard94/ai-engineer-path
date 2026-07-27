@@ -31,8 +31,13 @@ Available intents:
 - chat           : {}
 
 Examples:
+  "open Spotify"                 -> open_app { "app": "spotify" }
   "play Bohemian Rhapsody"       -> play_spotify { "query": "Bohemian Rhapsody" }
   "play something by Daft Punk"  -> play_spotify { "query": "Daft Punk" }
+  "play some music / play something on Spotify" -> play_spotify { "query": "" }
+  (any request to play/start music, even vague, is play_spotify - never chat.
+   You DO have the ability to play music via Spotify; if no song/artist was
+   given, leave "query" empty, the app will ask for one.)
   "switch to headphones"         -> switch_audio { "device": "headphones" }
   "start a new project"          -> new_project { "name": "", "description": "" }
   "ask claude what's the weather in the code" -> ask_claude { "query": "what's the weather in the code" }

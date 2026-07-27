@@ -61,7 +61,10 @@ class Speaker:
         write_state("speaking", detail=text)
         append_transcript("assistant", text)
 
-        if self._try_fish_speech(text):
+        # ponytail: once Fish Speech is known dead this session, don't
+        # reattempt the network call every turn - it just adds latency to
+        # every reply for a backend that isn't coming back without a restart.
+        if self._fish_ok is not False and self._try_fish_speech(text):
             return
         if self._try_elevenlabs(text):
             return

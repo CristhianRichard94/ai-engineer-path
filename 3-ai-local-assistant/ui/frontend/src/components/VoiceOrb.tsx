@@ -3,6 +3,7 @@ import {
   JarvisOrb,
   STATE_TARGETS,
   type JarvisPaletteName,
+  type JarvisPaletteValues,
   type JarvisSize,
   type JarvisStateTarget,
 } from 'jarvis-ai-web-animation'
@@ -57,9 +58,23 @@ const ATTENTION_TARGET: JarvisStateTarget = {
   filamentOpacity: 0.6,
 }
 
-// wake_listening / listening: the package has no dedicated "listening"
-// mood, so per its README we build one from idle with higher energy /
-// particle speed so it's visibly distinguishable from resting idle.
+// wake_listening: waiting for "Hey JARVIS", nothing being captured yet -
+// dim/grey so it reads as idle-and-waiting, distinct from actively
+// listening to a command.
+const WAKE_LISTENING_TARGET: JarvisStateTarget = {
+  ...STATE_TARGETS.idle,
+  energy: 0.5,
+  rotationSpeed: 0.3,
+  particleSpeed: 0.6,
+  ringSpread: 0.8,
+  filamentOpacity: 0.25,
+  bloom: 0.35,
+}
+
+// listening: actively capturing a command post-wake-word - the package has
+// no dedicated "listening" mood, so per its README we build one from idle
+// with higher energy / particle speed so it's visibly distinguishable from
+// resting idle.
 const LISTENING_TARGET: JarvisStateTarget = {
   ...STATE_TARGETS.idle,
   energy: 1.15,
@@ -68,6 +83,17 @@ const LISTENING_TARGET: JarvisStateTarget = {
   ringSpread: 1.0,
   filamentOpacity: 0.55,
   bloom: 0.78,
+}
+
+// No built-in "grey" palette (cyan | aurora | ember only) - the package
+// docs' custom-palette escape hatch, used only for wake_listening.
+const GREY_PALETTE: JarvisPaletteValues = {
+  core:      0xe5e5e5,
+  primary:   0x9ca3af,
+  secondary: 0x6b7280,
+  tertiary:  0xd1d5db,
+  deep:      0x1f2937,
+  fallback:  "radial-gradient(circle at 50% 50%, #e5e5e5 0%, #9ca3af 30%, #1f2937 75%, transparent)",
 }
 
 const SPEAKING_BASE = STATE_TARGETS.success
@@ -188,6 +214,7 @@ export default function VoiceOrb({ state, amplitude, size = 'panel', theme = 'cy
       case 'restarting':
         return ATTENTION_TARGET
       case 'wake_listening':
+        return WAKE_LISTENING_TARGET
       case 'listening':
         return LISTENING_TARGET
       case 'thinking':
@@ -199,7 +226,8 @@ export default function VoiceOrb({ state, amplitude, size = 'panel', theme = 'cy
     }
   }, [state, smoothedAmp])
 
-  const palette: JarvisPaletteName = state === 'error' ? 'ember' : theme
+  const palette: JarvisPaletteName | JarvisPaletteValues =
+    state === 'error' ? 'ember' : state === 'wake_listening' ? GREY_PALETTE : theme
 
   return (
     <div

@@ -1,6 +1,7 @@
-import openai, json, uuid
+import openai, json, os, uuid
 
 from constants import JARVIS_SYSTEM, CHAT_SYSTEM
+from vault import retrieve
 FALLBACK_INTENTS = {"chat"}   # intents that mean "mini wasn't sure"
 
 class JarvisBrain:
@@ -28,7 +29,8 @@ class JarvisBrain:
         # escalate to gpt-4o for just this one call
         if result.get("intent") in FALLBACK_INTENTS and any(
             kw in user_text.lower()
-            for kw in ["open", "close", "volume", "search", "folder", "system"]
+            for kw in ["open", "close", "volume", "search", "folder", "system",
+                       "play", "music", "spotify", "song"]
         ):
             print("[BRAIN] Escalating to gpt-4o for ambiguous command...")
             result = self._call_model("gpt-4o", user_text)
@@ -41,11 +43,29 @@ class JarvisBrain:
     def generate_chat_reply(self, user_text: str) -> str:
         """Genuine conversational reply for intent == 'chat', separate from the
         capped 'reply' field the classification call produces (tuned for
-        <15-word action acks). Plain-text completion, reuses self.history."""
+        <15-word action acks). Plain-text completion, reuses self.history.
+
+        Pulls relevant vault chunks (about-me/projects/prompt notes) into
+        the system prompt on every turn - unlike ask_claude, this is
+        read-only background context, not an agentic action, so it doesn't
+        need the "say yes to confirm" gate to be useful.
+        """
+        system_content = CHAT_SYSTEM
+        top_k = int(os.getenv("JARVIS_VAULT_TOP_K", "4"))
+        chunks = retrieve(user_text, top_k=top_k)
+        if chunks:
+            context = "\n\n".join(
+                "[{}] {}".format(c["source"], c["text"]) for c in chunks
+            )
+            system_content += (
+                "\n\nRelevant notes from your vault (use only if helpful, "
+                "don't mention 'the vault' explicitly):\n" + context
+            )
+
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": CHAT_SYSTEM},
+                {"role": "system", "content": system_content},
                 *self.history[-self.max_history:]
             ]
         )
