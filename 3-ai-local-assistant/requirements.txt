@@ -2,6 +2,7 @@
 openai                  # GPT-4o brain + Whisper STT
 python-dotenv           # .env loader
 anthropic               # Claude SDK client (ask_claude vault-backed path)
+mcp                     # MCP SDK (direct stdio client for project-tracker MCP server)
 sentence-transformers   # local embeddings for vault note retrieval
 faiss-cpu               # local vector index for vault note retrieval
 

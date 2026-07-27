@@ -558,10 +558,14 @@ class TestClaudeCli(unittest.TestCase):
 
     @patch("router.shutil.which", return_value="C:\\fake\\claude.exe")
     @patch("router.subprocess.run")
-    def test_daily_task_reminder_prompt_is_one_shot(self, mock_run, mock_which):
+    def test_daily_task_reminder_falls_back_to_cli_prompt_is_one_shot(self, mock_run, mock_which):
+        # Fallback path (direct MCP call failing) should still use the
+        # one-shot CLI prompt.
         mock_run.return_value = MagicMock(returncode=0, stdout="What's on the docket, sir?", stderr="")
         self.router._set_pending({"intent": "daily_task_reminder_confirm"})
-        reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes")
+        with patch("router.project_tracker_mcp.call_tool",
+                    side_effect=router_module.project_tracker_mcp.ProjectTrackerMCPError("no node")):
+            reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes")
         self.assertEqual(reply, "What's on the docket, sir?")
         args, kwargs = mock_run.call_args
         prompt = args[0][2]
@@ -620,10 +624,29 @@ class TestClaudeCli(unittest.TestCase):
 
     # ── Confirmation gate: daily_task_reminder ──────────────────────────
 
-    def test_daily_task_reminder_confirm_pending_affirmative_dispatches_cli(self):
+    def test_daily_task_reminder_confirm_pending_affirmative_calls_mcp_direct(self):
         self.router._set_pending({"intent": "daily_task_reminder_confirm"})
-        with patch.object(self.router, "_call_claude_cli", return_value="Here's the docket, sir.") as mock_cli:
+        with patch("router.project_tracker_mcp.call_tool",
+                    return_value="  1. Fix the bug (created 2026-07-20)") as mock_call:
+            with patch.object(self.router, "_call_claude_cli") as mock_cli:
+                reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes")
+        mock_call.assert_called_once_with("list_open_tasks")
+        mock_cli.assert_not_called()
+        self.assertIn("Fix the bug", reply)
+        self.assertIn("sir", reply)
+
+    def test_daily_task_reminder_confirm_no_open_tasks_says_none(self):
+        self.router._set_pending({"intent": "daily_task_reminder_confirm"})
+        with patch("router.project_tracker_mcp.call_tool", return_value="No open tasks."):
             reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes")
+        self.assertIn("no open tasks", reply.lower())
+
+    def test_daily_task_reminder_confirm_mcp_failure_falls_back_to_cli(self):
+        self.router._set_pending({"intent": "daily_task_reminder_confirm"})
+        with patch("router.project_tracker_mcp.call_tool",
+                    side_effect=router_module.project_tracker_mcp.ProjectTrackerMCPError("boom")):
+            with patch.object(self.router, "_call_claude_cli", return_value="Here's the docket, sir.") as mock_cli:
+                reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes")
         mock_cli.assert_called_once_with(
             self.router._DAILY_TASK_PROMPT,
             allowed_tools=["mcp__project-tracker__list_open_tasks"],
@@ -632,8 +655,10 @@ class TestClaudeCli(unittest.TestCase):
 
     def test_daily_task_reminder_confirm_pending_negative_cancels(self):
         self.router._set_pending({"intent": "daily_task_reminder_confirm"})
-        with patch.object(self.router, "_call_claude_cli") as mock_cli:
-            reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "no"}, raw_text="no")
+        with patch("router.project_tracker_mcp.call_tool") as mock_call:
+            with patch.object(self.router, "_call_claude_cli") as mock_cli:
+                reply = self.router.dispatch({"intent": "chat", "params": {}, "reply": "no"}, raw_text="no")
+        mock_call.assert_not_called()
         mock_cli.assert_not_called()
         self.assertIn("cancelled", reply.lower())
 

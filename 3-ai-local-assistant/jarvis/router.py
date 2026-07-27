@@ -6,6 +6,7 @@ Maps intent names (from brain.py) to concrete Windows/API actions.
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -20,6 +21,7 @@ from audio_switcher import AudioSwitcher
 from state import append_claude_audit
 from vault import retrieve
 from claude_client import ClaudeClient
+import project_tracker_mcp
 
 
 class IntentRouter:
@@ -172,10 +174,7 @@ class IntentRouter:
         if intent == "daily_task_reminder_confirm":
             self._pending = None
             if self._is_affirmative(parsed, raw_text):
-                return self._call_claude_cli(
-                    self._DAILY_TASK_PROMPT,
-                    allowed_tools=["mcp__project-tracker__list_open_tasks"],
-                )
+                return self._daily_task_reminder_reply()
             return "Okay, cancelled, sir."
 
         if intent == "new_project":
@@ -332,6 +331,63 @@ class IntentRouter:
         # agentic CLI (with project-tracker MCP tool access).
         self._set_pending({"intent": "daily_task_reminder_confirm"})
         return "Want me to check today's tasks with Claude, sir? Say yes to confirm."
+
+    def _daily_task_reminder_reply(self):
+        """Fetch open tasks via a direct MCP call to the project-tracker
+        server (bypassing the Claude Code CLI for this one skill) and
+        summarize them into a spoken reply.
+
+        On any MCP-level failure (missing node, server crash, timeout),
+        falls back to the existing `_call_claude_cli` path so the user
+        isn't left with nothing.
+        """
+        try:
+            raw_tasks = project_tracker_mcp.call_tool("list_open_tasks")
+        except project_tracker_mcp.ProjectTrackerMCPError as e:
+            print("[PROJECT_TRACKER_MCP] Direct call failed, falling back "
+                  "to Claude CLI: {}".format(e))
+            return self._call_claude_cli(
+                self._DAILY_TASK_PROMPT,
+                allowed_tools=["mcp__project-tracker__list_open_tasks"],
+            )
+
+        return self._summarize_open_tasks(raw_tasks)
+
+    # Matches the numbered task lines the project-tracker MCP server emits,
+    # e.g. "    3. Fix the login bug (created 2026-07-20)" — everything else
+    # in its list_open_tasks text (section/priority headers) is layout, not
+    # a task, so it's skipped when building the spoken summary.
+    _TASK_LINE_RE = re.compile(r"^\s*\d+\.\s*(.+?)\s*\(created\s+[^)]*\)\s*$")
+
+    @classmethod
+    def _summarize_open_tasks(cls, raw_tasks):
+        """Turn the raw list_open_tasks tool text into a speech-friendly
+        reply, without needing a further round-trip to an LLM."""
+        text = (raw_tasks or "").strip()
+        if not text or text.lower() == "no open tasks.":
+            return "You have no open tasks, sir."
+
+        descriptions = []
+        for line in text.splitlines():
+            match = cls._TASK_LINE_RE.match(line)
+            if match:
+                descriptions.append(match.group(1).strip())
+
+        if not descriptions:
+            # Non-empty tool output that didn't match a single task line -
+            # likely the server's output format drifted from _TASK_LINE_RE.
+            # Log it rather than silently telling the user "no open tasks"
+            # when tasks may actually exist.
+            print("[PROJECT_TRACKER_MCP] list_open_tasks returned non-empty "
+                  "text but no task line matched _TASK_LINE_RE: {!r}".format(text))
+            return "You have no open tasks, sir."
+
+        if len(descriptions) == 1:
+            return "You have one open task, sir: {}.".format(descriptions[0])
+
+        return "You have {} open tasks, sir: {}.".format(
+            len(descriptions), "; ".join(descriptions)
+        )
 
     def _ask_claude_sdk(self, query):
         """Answer `query` via the Anthropic SDK, augmented with vault
