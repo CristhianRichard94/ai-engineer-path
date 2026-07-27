@@ -711,3 +711,358 @@ class TestSwitchAudioDispatch(unittest.TestCase):
         parsed = {"intent": "switch_audio", "params": {"device": "headphones"}, "reply": "unused"}
         reply = self.router.dispatch(parsed)
         self.assertEqual(reply, "Switched, sir.")
+
+
+# ════════════════════════════════════════════════════════════════════════
+# manage_task
+# ════════════════════════════════════════════════════════════════════════
+
+class TestManageTask(unittest.TestCase):
+
+    def setUp(self):
+        self.router = _make_router()
+
+    # ── _last_tasks population from daily_task_reminder ─────────────────
+
+    def test_successful_listing_populates_last_tasks(self):
+        self.router._set_pending({"intent": "daily_task_reminder_confirm"})
+        with patch(
+            "router.project_tracker_mcp.call_tool",
+            return_value=(
+                "  1. Fix the login bug (created 2026-07-20)\n"
+                "  2. Buy groceries (created 2026-07-21)"
+            ),
+        ):
+            self.router.dispatch({"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes")
+        self.assertEqual(self.router._last_tasks, ["Fix the login bug", "Buy groceries"])
+
+    def test_zero_open_tasks_listing_clears_last_tasks(self):
+        self.router._last_tasks = ["stale task"]
+        self.router._set_pending({"intent": "daily_task_reminder_confirm"})
+        with patch("router.project_tracker_mcp.call_tool", return_value="No open tasks."):
+            self.router.dispatch({"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes")
+        self.assertEqual(self.router._last_tasks, [])
+
+    def test_failed_listing_leaves_last_tasks_unchanged(self):
+        self.router._last_tasks = ["Fix the login bug", "Buy groceries"]
+        self.router._set_pending({"intent": "daily_task_reminder_confirm"})
+        with patch(
+            "router.project_tracker_mcp.call_tool",
+            side_effect=router_module.project_tracker_mcp.ProjectTrackerMCPError("boom"),
+        ):
+            with patch.object(self.router, "_call_claude_cli", return_value="fallback reply"):
+                self.router.dispatch({"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes")
+        self.assertEqual(self.router._last_tasks, ["Fix the login bug", "Buy groceries"])
+
+    # ── Ordinal / pronoun resolution ─────────────────────────────────────
+
+    def test_resolve_first_ordinal(self):
+        self.router._last_tasks = ["Fix the login bug", "Buy groceries", "Ship the release"]
+        resolved, error = self.router._resolve_task_reference("first")
+        self.assertEqual(resolved, "Fix the login bug")
+        self.assertIsNone(error)
+
+    def test_resolve_1st_ordinal(self):
+        self.router._last_tasks = ["Fix the login bug", "Buy groceries"]
+        resolved, error = self.router._resolve_task_reference("1st")
+        self.assertEqual(resolved, "Fix the login bug")
+
+    def test_resolve_second_ordinal(self):
+        self.router._last_tasks = ["Fix the login bug", "Buy groceries"]
+        resolved, error = self.router._resolve_task_reference("second")
+        self.assertEqual(resolved, "Buy groceries")
+
+    def test_resolve_third_ordinal(self):
+        self.router._last_tasks = ["a", "b", "c"]
+        resolved, error = self.router._resolve_task_reference("3rd")
+        self.assertEqual(resolved, "c")
+
+    def test_resolve_last_ordinal(self):
+        self.router._last_tasks = ["a", "b", "c"]
+        resolved, error = self.router._resolve_task_reference("last")
+        self.assertEqual(resolved, "c")
+
+    def test_resolve_the_first_one_phrasing(self):
+        """Issue 3: constants.py's JARVIS_SYSTEM example documents 'the
+        first one' as valid model output - it must resolve the same as
+        bare 'first'."""
+        self.router._last_tasks = ["Fix the login bug", "Buy groceries"]
+        resolved, error = self.router._resolve_task_reference("the first one")
+        self.assertEqual(resolved, "Fix the login bug")
+        self.assertIsNone(error)
+
+    def test_resolve_the_last_one_phrasing(self):
+        self.router._last_tasks = ["a", "b", "c"]
+        resolved, error = self.router._resolve_task_reference("the last one")
+        self.assertEqual(resolved, "c")
+        self.assertIsNone(error)
+
+    def test_resolve_that_one_with_single_task(self):
+        self.router._last_tasks = ["Fix the login bug"]
+        resolved, error = self.router._resolve_task_reference("that one")
+        self.assertEqual(resolved, "Fix the login bug")
+        self.assertIsNone(error)
+
+    def test_resolve_it_with_single_task(self):
+        self.router._last_tasks = ["Fix the login bug"]
+        resolved, error = self.router._resolve_task_reference("it")
+        self.assertEqual(resolved, "Fix the login bug")
+
+    def test_resolve_that_ambiguous_with_multiple_tasks_is_unresolvable(self):
+        self.router._last_tasks = ["Fix the login bug", "Buy groceries"]
+        resolved, error = self.router._resolve_task_reference("that")
+        self.assertIsNone(resolved)
+        self.assertIn("which task", error.lower())
+
+    def test_resolve_ordinal_out_of_range_is_unresolvable(self):
+        self.router._last_tasks = ["Fix the login bug"]
+        resolved, error = self.router._resolve_task_reference("third")
+        self.assertIsNone(resolved)
+        self.assertIn("which task", error.lower())
+
+    def test_resolve_ordinal_with_empty_last_tasks_is_unresolvable(self):
+        self.router._last_tasks = []
+        resolved, error = self.router._resolve_task_reference("first")
+        self.assertIsNone(resolved)
+        self.assertIn("which task", error.lower())
+
+    def test_resolve_concrete_query_passes_through_unchanged(self):
+        self.router._last_tasks = []
+        resolved, error = self.router._resolve_task_reference("login bug")
+        self.assertEqual(resolved, "login bug")
+        self.assertIsNone(error)
+
+    def test_manage_task_unresolvable_ordinal_returns_clarifying_reply_no_pending(self):
+        self.router._last_tasks = []
+        reply = self.router.manage_task({"action": "done", "query": "first"})
+        self.assertIn("which task", reply.lower())
+        self.assertIsNone(self.router._pending)
+
+    def test_manage_task_resolves_ordinal_before_setting_pending(self):
+        self.router._last_tasks = ["Fix the login bug", "Buy groceries"]
+        reply = self.router.manage_task({"action": "done", "query": "first"})
+        pending = dict(self.router._pending)
+        pending.pop("_ts", None)
+        self.assertEqual(pending["query"], "Fix the login bug")
+        self.assertIn("Fix the login bug", reply)
+
+    # ── Confirmation gate: manage_task ───────────────────────────────────
+
+    def test_manage_task_done_sets_confirm_pending(self):
+        self.router._last_tasks = ["Fix the login bug"]
+        reply = self.router.manage_task({"action": "done", "query": "login bug"})
+        pending = dict(self.router._pending)
+        pending.pop("_ts", None)
+        self.assertEqual(
+            pending,
+            {
+                "intent": "manage_task_confirm",
+                "action": "done",
+                "query": "Fix the login bug",
+                "description": "",
+                "priority": None,
+            },
+        )
+        self.assertIn("login bug", reply)
+        self.assertIn("confirm", reply.lower())
+
+    def test_manage_task_direct_query_no_match_returns_clarifying_no_pending(self):
+        """Issue 1 regression: a direct-text query that doesn't match any
+        real task must not proceed to a confirmation - it should ask for
+        clarification instead, since confirming would mutate/delete an
+        arbitrary or wrong row."""
+        self.router._last_tasks = ["Fix the login bug", "Buy groceries"]
+        reply = self.router.manage_task({"action": "delete", "query": "spotify"})
+        self.assertIn("couldn't find a task matching 'spotify'", reply)
+        self.assertIsNone(self.router._pending)
+
+    def test_manage_task_direct_query_ambiguous_match_returns_clarifying_no_pending(self):
+        self.router._last_tasks = ["Fix the login bug", "Fix the signup bug"]
+        reply = self.router.manage_task({"action": "done", "query": "fix"})
+        self.assertIn("more than one task", reply.lower())
+        self.assertIsNone(self.router._pending)
+
+    def test_manage_task_direct_query_names_real_matched_task_in_confirmation(self):
+        """Issue 1: confirmation prompt must echo the real resolved task
+        text, not the raw user query."""
+        self.router._last_tasks = ["Fix the login bug", "Buy groceries"]
+        reply = self.router.manage_task({"action": "delete", "query": "groceries"})
+        self.assertIn("Buy groceries", reply)
+        pending = dict(self.router._pending)
+        self.assertEqual(pending["query"], "Buy groceries")
+
+    def test_manage_task_direct_query_falls_back_to_fresh_listing_when_last_tasks_empty(self):
+        self.router._last_tasks = []
+        with patch(
+            "router.project_tracker_mcp.call_tool",
+            return_value="  1. Fix the login bug (created 2026-07-20)",
+        ) as mock_call:
+            reply = self.router.manage_task({"action": "done", "query": "login bug"})
+        mock_call.assert_called_once_with("list_open_tasks")
+        self.assertIn("Fix the login bug", reply)
+        self.assertEqual(self.router._last_tasks, ["Fix the login bug"])
+
+    def test_manage_task_add_sets_confirm_pending_with_description(self):
+        reply = self.router.manage_task({"action": "add", "description": "buy groceries"})
+        pending = dict(self.router._pending)
+        pending.pop("_ts", None)
+        self.assertEqual(pending["action"], "add")
+        self.assertEqual(pending["description"], "buy groceries")
+        self.assertIn("buy groceries", reply)
+
+    def test_manage_task_add_without_description_asks_for_it_no_pending(self):
+        reply = self.router.manage_task({"action": "add", "description": ""})
+        self.assertIn("what should the new task say", reply.lower())
+        self.assertIsNone(self.router._pending)
+
+    def test_manage_task_confirm_negative_cancels(self):
+        self.router._set_pending({
+            "intent": "manage_task_confirm", "action": "done",
+            "query": "login bug", "description": "", "priority": None,
+        })
+        with patch("router.project_tracker_mcp.call_tool") as mock_call:
+            reply = self.router.dispatch(
+                {"intent": "chat", "params": {}, "reply": "no"}, raw_text="no"
+            )
+        mock_call.assert_not_called()
+        self.assertIn("cancelled", reply.lower())
+        self.assertIsNone(self.router._pending)
+
+    # ── Execution: mark_task_done ────────────────────────────────────────
+
+    def test_manage_task_done_confirm_affirmative_calls_mcp_direct(self):
+        self.router._set_pending({
+            "intent": "manage_task_confirm", "action": "done",
+            "query": "login bug", "description": "", "priority": None,
+        })
+        with patch(
+            "router.project_tracker_mcp.call_tool",
+            return_value="Marked 'Fix the login bug' as done.",
+        ) as mock_call:
+            reply = self.router.dispatch(
+                {"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes"
+            )
+        mock_call.assert_called_once_with("mark_task_done", {"query": "login bug"})
+        self.assertEqual(reply, "Marked 'Fix the login bug' as done.")
+        self.assertIsNone(self.router._pending)
+
+    def test_manage_task_delete_confirm_affirmative_calls_mcp_direct(self):
+        self.router._set_pending({
+            "intent": "manage_task_confirm", "action": "delete",
+            "query": "spotify", "description": "", "priority": None,
+        })
+        with patch(
+            "router.project_tracker_mcp.call_tool",
+            return_value="Deleted task 'spotify'.",
+        ) as mock_call:
+            reply = self.router.dispatch(
+                {"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes"
+            )
+        mock_call.assert_called_once_with("delete_task", {"query": "spotify"})
+        self.assertEqual(reply, "Deleted task 'spotify'.")
+
+    def test_manage_task_add_confirm_affirmative_calls_mcp_direct(self):
+        self.router._set_pending({
+            "intent": "manage_task_confirm", "action": "add",
+            "query": "", "description": "buy groceries", "priority": None,
+        })
+        with patch(
+            "router.project_tracker_mcp.call_tool",
+            return_value="Added task 'buy groceries'.",
+        ) as mock_call:
+            reply = self.router.dispatch(
+                {"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes"
+            )
+        mock_call.assert_called_once_with("add_task", {"description": "buy groceries"})
+        self.assertEqual(reply, "Added task 'buy groceries'.")
+
+    def test_manage_task_add_confirm_with_priority_includes_priority_arg(self):
+        self.router._set_pending({
+            "intent": "manage_task_confirm", "action": "add",
+            "query": "", "description": "buy groceries", "priority": 2,
+        })
+        with patch(
+            "router.project_tracker_mcp.call_tool",
+            return_value="Added task 'buy groceries'.",
+        ) as mock_call:
+            self.router.dispatch(
+                {"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes"
+            )
+        mock_call.assert_called_once_with(
+            "add_task", {"description": "buy groceries", "priority": 2}
+        )
+
+    def test_manage_task_edit_confirm_affirmative_calls_mcp_direct(self):
+        self.router._set_pending({
+            "intent": "manage_task_confirm", "action": "edit",
+            "query": "login bug", "description": "Fix the critical login bug",
+            "priority": 1,
+        })
+        with patch(
+            "router.project_tracker_mcp.call_tool",
+            return_value="Updated task 'login bug'.",
+        ) as mock_call:
+            reply = self.router.dispatch(
+                {"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes"
+            )
+        mock_call.assert_called_once_with(
+            "edit_task",
+            {"query": "login bug", "description": "Fix the critical login bug", "priority": 1},
+        )
+        self.assertEqual(reply, "Updated task 'login bug'.")
+
+    # ── MCP failure -> CLI fallback ──────────────────────────────────────
+
+    def test_manage_task_done_mcp_failure_falls_back_to_cli(self):
+        self.router._set_pending({
+            "intent": "manage_task_confirm", "action": "done",
+            "query": "login bug", "description": "", "priority": None,
+        })
+        with patch(
+            "router.project_tracker_mcp.call_tool",
+            side_effect=router_module.project_tracker_mcp.ProjectTrackerMCPError("boom"),
+        ):
+            with patch.object(
+                self.router, "_call_claude_cli", return_value="Marked it done, sir."
+            ) as mock_cli:
+                reply = self.router.dispatch(
+                    {"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes"
+                )
+        mock_cli.assert_called_once()
+        args, kwargs = mock_cli.call_args
+        self.assertIn("login bug", args[0])
+        self.assertEqual(kwargs["allowed_tools"], ["mcp__project-tracker__mark_task_done"])
+        self.assertEqual(reply, "Marked it done, sir.")
+
+    # ── Full round trip ───────────────────────────────────────────────────
+
+    def test_manage_task_full_round_trip_first_one_after_listing(self):
+        """End-to-end: list tasks -> confirm listing -> 'mark the first one
+        done' -> confirm -> mark_task_done called with the resolved text."""
+        self.router._set_pending({"intent": "daily_task_reminder_confirm"})
+        with patch(
+            "router.project_tracker_mcp.call_tool",
+            return_value="  1. Fix the login bug (created 2026-07-20)\n  2. Buy groceries (created 2026-07-21)",
+        ):
+            self.router.dispatch({"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes")
+
+        self.assertEqual(self.router._last_tasks, ["Fix the login bug", "Buy groceries"])
+
+        confirm_reply = self.router.dispatch({
+            "intent": "manage_task",
+            "params": {"action": "done", "query": "first"},
+            "reply": "unused",
+        })
+        self.assertIn("Fix the login bug", confirm_reply)
+        self.assertIn("confirm", confirm_reply.lower())
+
+        with patch(
+            "router.project_tracker_mcp.call_tool",
+            return_value="Marked 'Fix the login bug' as done.",
+        ) as mock_call:
+            final_reply = self.router.dispatch(
+                {"intent": "chat", "params": {}, "reply": "yes"}, raw_text="yes"
+            )
+        mock_call.assert_called_once_with("mark_task_done", {"query": "Fix the login bug"})
+        self.assertEqual(final_reply, "Marked 'Fix the login bug' as done.")
+        self.assertIsNone(self.router._pending)

@@ -81,11 +81,17 @@ class TestChatRoute(unittest.TestCase):
         server_module._router = None
 
     def _mock_components(self, parsed=None, reply="Done, sir."):
+        parsed = parsed or {"intent": "chat", "params": {}, "reply": reply}
         mock_brain = MagicMock()
         mock_brain.conversation_id = "test-conversation-id"
-        mock_brain.think.return_value = parsed or {"intent": "chat", "params": {}, "reply": reply}
+        mock_brain.think.return_value = parsed
         mock_router = MagicMock()
         mock_router.dispatch.return_value = reply
+        # Mirrors real IntentRouter.dispatch()'s behaviour of stamping
+        # last_effective_intent with the (usually raw) intent it just
+        # handled - server.py reads this attribute right after dispatch()
+        # to update brain.last_intent for sticky routing.
+        mock_router.last_effective_intent = parsed.get("intent", "chat")
         return mock.patch.object(
             server_module, "_get_chat_components", return_value=(mock_brain, mock_router)
         ), mock_brain, mock_router
@@ -211,6 +217,7 @@ class TestChatRoute(unittest.TestCase):
 
         mock_router = MagicMock()
         mock_router.dispatch.side_effect = lambda parsed, raw_text=None: parsed["reply"]
+        mock_router.last_effective_intent = "chat"
 
         results = {}
 

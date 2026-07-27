@@ -72,10 +72,18 @@ def run_session(stt, brain, router, speaker):
 
         # ── Think ───────────────────────────────────────────────────
         parsed = brain.think(command)
-        intent = parsed.get("intent", "chat")
 
         # ── Dispatch ────────────────────────────────────────────────
         reply = router.dispatch(parsed, raw_text=command)
+
+        # The effective intent for sticky-routing purposes is what the
+        # router actually did with this turn (which may differ from
+        # brain.think()'s raw classification, e.g. a bare "yes" answering
+        # a pending daily_task_reminder/manage_task confirmation) - use it
+        # to update brain.last_intent so the *next* turn still benefits
+        # from sticky task-domain routing.
+        intent = router.last_effective_intent or parsed.get("intent", "chat")
+        brain.last_intent = intent
 
         # ── Speak ───────────────────────────────────────────────────
         # ponytail: Bluetooth headsets drop from A2DP (playback) to HFP

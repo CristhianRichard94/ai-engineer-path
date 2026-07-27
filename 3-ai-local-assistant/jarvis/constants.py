@@ -27,6 +27,7 @@ Available intents:
 - new_project    : { "name": "<project name>", "description": "<short description>" }
 - ask_claude     : { "query": "<free-form question or command for Claude>" }
 - daily_task_reminder: {}
+- manage_task     : { "action": "done"|"delete"|"add"|"edit", "query": "<task text or an ambiguous reference like 'the first one'/'that one'/'the last one' if it plausibly refers to a task just listed>", "description": "<new/added task text, for action add or edit>", "priority": <1-5 optional> }
 - goodbye        : {}
 - chat           : {}
 
@@ -44,6 +45,12 @@ Examples:
   "ask claude to summarize the repo" -> ask_claude { "query": "summarize the repo" }
   "what should I work on today"  -> daily_task_reminder {}
   "give me my daily task reminder" -> daily_task_reminder {}
+  "mark the login bug done"      -> manage_task { "action": "done", "query": "login bug" }
+  "delete the spotify task"      -> manage_task { "action": "delete", "query": "spotify" }
+  "add a task to buy groceries"  -> manage_task { "action": "add", "description": "buy groceries" }
+  "mark the first one done"      -> manage_task { "action": "done", "query": "first" }
+  (ambiguous ordinal references like "the first one"/"that one"/"the last one"
+   are passed through as query text - the app resolves them, not you.)
   "goodbye / that's all / bye"   -> goodbye {}
 """
 

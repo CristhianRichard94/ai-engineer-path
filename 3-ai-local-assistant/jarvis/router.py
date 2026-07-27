@@ -51,6 +51,28 @@ class IntentRouter:
         # generic intent-interruption support).
         self._pending = None
 
+        # Descriptions of tasks from the most recent successful
+        # daily_task_reminder listing, in listed order - lets manage_task
+        # resolve ordinal/pronoun references ("the first one", "that one")
+        # without the user having to repeat the task text.
+        # TODO: no TTL/clear-on-New-Conversation for this list (unlike
+        # self._pending's 120s TTL) - acceptable for now since the
+        # confirm-gate names the resolved task before acting, but worth
+        # revisiting if it starts serving stale matches.
+        self._last_tasks = []
+
+        # The *effective* intent for the turn just dispatched - i.e. what
+        # the router actually did, not necessarily what brain.think() raw-
+        # classified the turn's text as. When a turn resolves a pending
+        # confirmation (e.g. "yes" answering a daily_task_reminder_confirm
+        # or manage_task_confirm prompt), the effective intent is the
+        # domain intent the conversation is still in (so sticky routing in
+        # brain.py survives a bare confirm turn), not "chat". Callers
+        # (main.py, ui/server.py) should read this right after dispatch()
+        # and use it to update brain.last_intent instead of trusting
+        # brain.think()'s own classification of the confirm utterance.
+        self.last_effective_intent = None
+
         # Route table: intent name -> method name on this class.
         # Using method NAMES (not bound methods) so that tests can replace
         # instance methods via attribute assignment and dispatch sees the patch.
@@ -68,6 +90,7 @@ class IntentRouter:
             "new_project"    : "new_project",
             "ask_claude"     : "ask_claude",
             "daily_task_reminder": "daily_task_reminder",
+            "manage_task"    : "manage_task",
             "goodbye"        : "goodbye",
             "chat"           : "do_nothing",
         }
@@ -82,6 +105,7 @@ class IntentRouter:
             "new_project",
             "ask_claude",
             "daily_task_reminder",
+            "manage_task",
         }
 
     # ------------------------------------------------------------------
@@ -106,7 +130,10 @@ class IntentRouter:
                 # answer to a question the user has moved on from.
                 self._pending = None
             else:
-                return self._continue_pending(parsed, raw_text)
+                reply = self._continue_pending(parsed, raw_text)
+                # _continue_pending() already set self.last_effective_intent
+                # for the pending intent it resolved.
+                return reply
 
         intent = parsed.get("intent", "chat")
         params = parsed.get("params", {})
@@ -114,6 +141,8 @@ class IntentRouter:
 
         method_name = self._routes.get(intent, "do_nothing")
         fn = getattr(self, method_name, self.do_nothing)
+
+        self.last_effective_intent = intent
 
         # ponytail: a handler crashing on a missing/malformed param (e.g. a
         # misparsed intent) must not take down the whole session loop -
@@ -138,6 +167,7 @@ class IntentRouter:
         intent = pending["intent"]
 
         if intent == "switch_audio":
+            self.last_effective_intent = "switch_audio"
             device = (parsed.get("params", {}) or {}).get("device", "").strip()
             if not device:
                 device = (raw_text or "").strip()
@@ -147,6 +177,7 @@ class IntentRouter:
             return self.switch_audio({"device": device})
 
         if intent == "play_spotify":
+            self.last_effective_intent = "play_spotify"
             query = (parsed.get("params", {}) or {}).get("query", "").strip()
             if not query:
                 query = (raw_text or "").strip()
@@ -156,6 +187,7 @@ class IntentRouter:
             return self.play_spotify({"query": query})
 
         if intent == "ask_claude":
+            self.last_effective_intent = "ask_claude"
             query = (parsed.get("params", {}) or {}).get("query", "").strip()
             if not query:
                 query = (raw_text or "").strip()
@@ -165,6 +197,7 @@ class IntentRouter:
             return self.ask_claude({"query": query})
 
         if intent == "ask_claude_confirm":
+            self.last_effective_intent = "ask_claude"
             query = pending["query"]
             self._pending = None
             if self._is_affirmative(parsed, raw_text):
@@ -172,15 +205,30 @@ class IntentRouter:
             return "Okay, cancelled, sir."
 
         if intent == "daily_task_reminder_confirm":
+            # Effective intent stays in the task domain (not "chat") so
+            # that sticky routing in brain.py survives this bare confirm
+            # turn and the *next* turn (e.g. "mark the first one done")
+            # still gets escalated/routed correctly.
+            self.last_effective_intent = "daily_task_reminder"
             self._pending = None
             if self._is_affirmative(parsed, raw_text):
                 return self._daily_task_reminder_reply()
             return "Okay, cancelled, sir."
 
+        if intent == "manage_task_confirm":
+            # Same reasoning as daily_task_reminder_confirm above.
+            self.last_effective_intent = "manage_task"
+            self._pending = None
+            if self._is_affirmative(parsed, raw_text):
+                return self._manage_task_execute(pending)
+            return "Okay, cancelled, sir."
+
         if intent == "new_project":
+            self.last_effective_intent = "new_project"
             return self._advance_new_project(parsed, raw_text)
 
         # Unknown pending intent — clear it defensively rather than get stuck.
+        self.last_effective_intent = "chat"
         self._pending = None
         return "Let's start over, sir."
 
@@ -339,7 +387,9 @@ class IntentRouter:
 
         On any MCP-level failure (missing node, server crash, timeout),
         falls back to the existing `_call_claude_cli` path so the user
-        isn't left with nothing.
+        isn't left with nothing. On the CLI-fallback path, self._last_tasks
+        is left unchanged (the CLI path doesn't yield a clean parseable
+        list, don't guess).
         """
         try:
             raw_tasks = project_tracker_mcp.call_tool("list_open_tasks")
@@ -351,7 +401,12 @@ class IntentRouter:
                 allowed_tools=["mcp__project-tracker__list_open_tasks"],
             )
 
-        return self._summarize_open_tasks(raw_tasks)
+        descriptions = self._parse_open_tasks(raw_tasks)
+        # Only overwrite _last_tasks on a real, successfully-parsed listing
+        # (including the legitimate "zero open tasks" case) so a later
+        # failed re-listing doesn't wipe out a still-valid prior list.
+        self._last_tasks = descriptions
+        return self._summarize_open_tasks(raw_tasks, descriptions)
 
     # Matches the numbered task lines the project-tracker MCP server emits,
     # e.g. "    3. Fix the login bug (created 2026-07-20)" — everything else
@@ -360,18 +415,30 @@ class IntentRouter:
     _TASK_LINE_RE = re.compile(r"^\s*\d+\.\s*(.+?)\s*\(created\s+[^)]*\)\s*$")
 
     @classmethod
-    def _summarize_open_tasks(cls, raw_tasks):
-        """Turn the raw list_open_tasks tool text into a speech-friendly
-        reply, without needing a further round-trip to an LLM."""
+    def _parse_open_tasks(cls, raw_tasks):
+        """Extract the ordered list of task descriptions from the raw
+        list_open_tasks tool text (empty list if none/unparseable)."""
         text = (raw_tasks or "").strip()
         if not text or text.lower() == "no open tasks.":
-            return "You have no open tasks, sir."
+            return []
 
         descriptions = []
         for line in text.splitlines():
             match = cls._TASK_LINE_RE.match(line)
             if match:
                 descriptions.append(match.group(1).strip())
+        return descriptions
+
+    @classmethod
+    def _summarize_open_tasks(cls, raw_tasks, descriptions=None):
+        """Turn the raw list_open_tasks tool text into a speech-friendly
+        reply, without needing a further round-trip to an LLM."""
+        text = (raw_tasks or "").strip()
+        if not text or text.lower() == "no open tasks.":
+            return "You have no open tasks, sir."
+
+        if descriptions is None:
+            descriptions = cls._parse_open_tasks(raw_tasks)
 
         if not descriptions:
             # Non-empty tool output that didn't match a single task line -
@@ -387,6 +454,242 @@ class IntentRouter:
 
         return "You have {} open tasks, sir: {}.".format(
             len(descriptions), "; ".join(descriptions)
+        )
+
+    # Ordinal/pronoun words that can stand in for an item from the most
+    # recently spoken task list, and the index they resolve to.
+    _ORDINAL_INDEX = {
+        "first": 0, "1st": 0,
+        "second": 1, "2nd": 1,
+        "third": 2, "3rd": 2,
+        "last": -1,
+    }
+    _PRONOUN_WORDS = {"that", "that one", "it"}
+
+    # Regex-free normalization for ordinal/pronoun phrasing: strips a
+    # leading "the " and a trailing " one" (case-insensitive) so that
+    # "the first one" / "the last one" — the exact phrasing constants.py's
+    # JARVIS_SYSTEM prompt documents as a valid model output — match
+    # _ORDINAL_INDEX/_PRONOUN_WORDS the same way bare "first"/"last" do.
+    @staticmethod
+    def _normalize_reference_key(text):
+        key = (text or "").strip().lower()
+        if key.startswith("the "):
+            key = key[len("the "):]
+        if key.endswith(" one") and key != "one":
+            key = key[: -len(" one")]
+        return key.strip()
+
+    def manage_task(self, p):
+        p = p or {}
+        action = (p.get("action") or "").strip().lower()
+        query = (p.get("query") or "").strip()
+        description = (p.get("description") or "").strip()
+        priority = p.get("priority")
+
+        if action not in ("done", "delete", "add", "edit"):
+            return "I'm not sure what task change you mean, sir."
+
+        # "add" doesn't need a query - it's built purely from description.
+        if action != "add":
+            original_key = self._normalize_reference_key(query)
+            is_reference = (
+                original_key in self._ORDINAL_INDEX
+                or original_key in self._PRONOUN_WORDS
+            )
+
+            resolved_query, error = self._resolve_task_reference(query)
+            if error:
+                return error
+            query = resolved_query
+
+            # Ordinal/pronoun references above already resolved to a real
+            # task description straight out of self._last_tasks. A direct
+            # text query (e.g. "spotify") hasn't been checked against the
+            # real task list yet — resolve it now so the spoken
+            # confirmation names the task the MCP server's own fuzzy
+            # matcher will actually act on, not the user's raw search
+            # text. Without this, a reflexive "yes" could confirm against
+            # a match the user never saw and never actually intended.
+            if not is_reference:
+                matched_query, match_error = self._resolve_direct_query(query)
+                if match_error:
+                    return match_error
+                query = matched_query
+
+        if action == "add" and not description:
+            return "What should the new task say, sir?"
+
+        pending = {
+            "intent": "manage_task_confirm",
+            "action": action,
+            "query": query,
+            "description": description,
+            "priority": priority,
+        }
+        self._set_pending(pending)
+
+        if action == "done":
+            return "You want me to mark '{}' done, sir? Say yes to confirm.".format(query)
+        if action == "delete":
+            return "You want me to delete '{}', sir? Say yes to confirm.".format(query)
+        if action == "add":
+            return "You want me to add a task: '{}', sir? Say yes to confirm.".format(description)
+        # edit
+        return "You want me to update '{}', sir? Say yes to confirm.".format(query)
+
+    def _resolve_task_reference(self, query):
+        """Resolve an ordinal/pronoun reference against self._last_tasks.
+
+        Returns (resolved_query, error). If query isn't a reference word (or
+        is empty), it's passed through unchanged with error=None. If it is a
+        reference word but can't be resolved, resolved_query is None and
+        error is a clarifying reply to speak (no MCP call should follow).
+        """
+        key = self._normalize_reference_key(query)
+        if key not in self._ORDINAL_INDEX and key not in self._PRONOUN_WORDS:
+            return query, None
+
+        if not self._last_tasks:
+            return None, "Which task do you mean, sir? I don't have a recent list to go by."
+
+        if key in self._PRONOUN_WORDS:
+            if len(self._last_tasks) == 1:
+                return self._last_tasks[0], None
+            return None, "Which task do you mean, sir? I don't have a recent list to go by."
+
+        index = self._ORDINAL_INDEX[key]
+        try:
+            return self._last_tasks[index], None
+        except IndexError:
+            return None, "Which task do you mean, sir? I don't have a recent list to go by."
+
+    def _resolve_direct_query(self, query):
+        """Resolve a direct-text task query (e.g. "spotify") against the
+        real open-task list before it's used in a spoken confirmation
+        prompt, so the confirmation names the task that will actually be
+        matched/mutated server-side - not the user's raw (possibly
+        ambiguous or simply wrong) search text.
+
+        Uses self._last_tasks if populated (from a recent listing),
+        falling back to a fresh list_open_tasks MCP call if it's empty or
+        stale. Matching is a simple case-insensitive substring check -
+        good enough to name a real candidate, not a reimplementation of
+        the MCP server's own fuzzy matcher.
+
+        Returns (matched_query, error). On exactly one match, returns the
+        real task description with error=None. On zero or multiple
+        matches (or if the task list can't be fetched at all), returns
+        (None, clarifying reply) so the caller does not proceed to set a
+        misleading confirmation.
+        """
+        tasks = self._last_tasks
+        if not tasks:
+            try:
+                raw_tasks = project_tracker_mcp.call_tool("list_open_tasks")
+            except project_tracker_mcp.ProjectTrackerMCPError as e:
+                print("[PROJECT_TRACKER_MCP] Direct call failed while "
+                      "resolving task reference: {}".format(e))
+                return None, "I couldn't find a task matching '{}', sir.".format(query)
+            tasks = self._parse_open_tasks(raw_tasks)
+            self._last_tasks = tasks
+
+        needle = query.lower().strip()
+        matches = [t for t in tasks if needle and needle in t.lower()]
+
+        if not matches:
+            return None, "I couldn't find a task matching '{}', sir.".format(query)
+        if len(matches) > 1:
+            return None, (
+                "I found more than one task matching '{}', sir - "
+                "which one do you mean?".format(query)
+            )
+        return matches[0], None
+
+    _MANAGE_TASK_TOOL_NAMES = {
+        "done"  : "mark_task_done",
+        "delete": "delete_task",
+        "add"   : "add_task",
+        "edit"  : "edit_task",
+    }
+
+    def _manage_task_execute(self, pending):
+        """Execute a confirmed manage_task action via a direct MCP call to
+        the project-tracker server, falling back to the Claude Code CLI on
+        any MCP-level failure - same pattern as _daily_task_reminder_reply.
+        """
+        action = pending.get("action")
+        query = pending.get("query", "")
+        description = pending.get("description", "")
+        priority = pending.get("priority")
+
+        tool_name = self._MANAGE_TASK_TOOL_NAMES.get(action)
+        if tool_name is None:
+            return "I'm not sure what task change you mean, sir."
+
+        arguments = {}
+        if action == "done":
+            arguments = {"query": query}
+        elif action == "delete":
+            arguments = {"query": query}
+        elif action == "add":
+            arguments = {"description": description}
+            if priority is not None:
+                arguments["priority"] = priority
+        elif action == "edit":
+            arguments = {"query": query}
+            if description:
+                arguments["description"] = description
+            if priority is not None:
+                arguments["priority"] = priority
+
+        prompt = self._manage_task_cli_prompt(action, query, description, priority)
+
+        try:
+            result = project_tracker_mcp.call_tool(tool_name, arguments)
+        except project_tracker_mcp.ProjectTrackerMCPError as e:
+            print("[PROJECT_TRACKER_MCP] Direct call failed, falling back "
+                  "to Claude CLI: {}".format(e))
+            return self._call_claude_cli(
+                prompt,
+                allowed_tools=["mcp__project-tracker__{}".format(tool_name)],
+            )
+
+        return result or "Done, sir."
+
+    @staticmethod
+    def _manage_task_cli_prompt(action, query, description, priority):
+        """Build the one-shot CLI fallback prompt for a manage_task action."""
+        if action == "done":
+            return (
+                "Use the mcp__project-tracker__mark_task_done tool to mark the task "
+                "matching '{}' as done. Report the result as your final answer — "
+                "this is a one-shot request, don't wait for further input.".format(query)
+            )
+        if action == "delete":
+            return (
+                "Use the mcp__project-tracker__delete_task tool to delete the task "
+                "matching '{}'. Report the result as your final answer — this is a "
+                "one-shot request, don't wait for further input.".format(query)
+            )
+        if action == "add":
+            extra = " with priority {}".format(priority) if priority is not None else ""
+            return (
+                "Use the mcp__project-tracker__add_task tool to add a new task: "
+                "'{}'{}. Report the result as your final answer — this is a one-shot "
+                "request, don't wait for further input.".format(description, extra)
+            )
+        # edit
+        parts = []
+        if description:
+            parts.append("description to '{}'".format(description))
+        if priority is not None:
+            parts.append("priority to {}".format(priority))
+        change = " and ".join(parts) if parts else "its details"
+        return (
+            "Use the mcp__project-tracker__edit_task tool to update the task matching "
+            "'{}', setting its {}. Report the result as your final answer — this is a "
+            "one-shot request, don't wait for further input.".format(query, change)
         )
 
     def _ask_claude_sdk(self, query):

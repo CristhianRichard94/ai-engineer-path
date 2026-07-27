@@ -278,7 +278,15 @@ def chat():
             parsed = brain.think(message)
             reply = router.dispatch(parsed, raw_text=message)
 
-            intent = parsed.get("intent", "chat") if isinstance(parsed, dict) else "chat"
+            # See main.py's run_session() for why this uses the router's
+            # effective intent (what it actually did with this turn, e.g.
+            # resolving a pending confirmation) rather than trusting
+            # brain.think()'s raw classification of a bare "yes" - and why
+            # brain.last_intent needs to reflect it for sticky routing on
+            # the next turn.
+            raw_intent = parsed.get("intent", "chat") if isinstance(parsed, dict) else "chat"
+            intent = router.last_effective_intent or raw_intent
+            brain.last_intent = intent
 
             # Transcript writes for this turn happen inside the same lock as
             # think()/dispatch() so that two concurrent /chat requests can

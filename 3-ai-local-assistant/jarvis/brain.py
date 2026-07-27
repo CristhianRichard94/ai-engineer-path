@@ -10,6 +10,7 @@ class JarvisBrain:
         self.history = []          # rolling conversation memory
         self.max_history = 10      # keep last 10 turns
         self.conversation_id = str(uuid.uuid4())   # identifies this conversation's lifetime
+        self.last_intent = None    # intent classified on the previous think() call
 
     def reset_history(self):
         """Clear rolling conversation memory and start a new conversation_id.
@@ -26,11 +27,20 @@ class JarvisBrain:
         result = self._call_model("gpt-4o-mini", user_text)
 
         # if mini defaulted to chat but the command sounds action-like,
-        # escalate to gpt-4o for just this one call
-        if result.get("intent") in FALLBACK_INTENTS and any(
-            kw in user_text.lower()
-            for kw in ["open", "close", "volume", "search", "folder", "system",
-                       "play", "music", "spotify", "song"]
+        # escalate to gpt-4o for just this one call. Also escalate (even
+        # without a keyword hit) if the previous turn was task-domain -
+        # a same-topic follow-up ("mark the first one done") shouldn't need
+        # the user to repeat "todo"/"task" to get classified correctly.
+        # self.history (already passed to _call_model) carries the prior
+        # turn's text, which is enough signal for gpt-4o to pick up the
+        # thread without any extra prompt hinting here.
+        if result.get("intent") in FALLBACK_INTENTS and (
+            any(
+                kw in user_text.lower()
+                for kw in ["open", "close", "volume", "search", "folder", "system",
+                           "play", "music", "spotify", "song"]
+            )
+            or self.last_intent in {"daily_task_reminder", "manage_task"}
         ):
             print("[BRAIN] Escalating to gpt-4o for ambiguous command...")
             result = self._call_model("gpt-4o", user_text)
@@ -38,6 +48,7 @@ class JarvisBrain:
         if result.get("intent") == "chat":
             result["reply"] = self.generate_chat_reply(user_text)
 
+        self.last_intent = result.get("intent", "chat")
         return result
 
     def generate_chat_reply(self, user_text: str) -> str:

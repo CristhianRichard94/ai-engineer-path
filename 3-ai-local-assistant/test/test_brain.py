@@ -164,6 +164,124 @@ class JarvisBrainTests(unittest.TestCase):
         other_brain = brain.JarvisBrain(api_key=self.api_key)
         self.assertNotEqual(self.brain.conversation_id, other_brain.conversation_id)
 
+    # ── Sticky task-domain escalation ────────────────────────────────────
+
+    def test_init_last_intent_is_none(self):
+        self.assertIsNone(self.brain.last_intent)
+
+    def test_think_sets_last_intent_to_result_intent(self):
+        payload = json.dumps({"intent": "get_time", "params": {}, "reply": "It's noon, sir."})
+        self._prepare_response(payload)
+
+        self.brain.think("what time is it")
+
+        self.assertEqual(self.brain.last_intent, "get_time")
+
+    def test_think_sets_last_intent_to_chat_on_chat_result(self):
+        classify_payload = json.dumps({"intent": "chat", "params": {}, "reply": "Hello sir."})
+        classify_response = self._prepare_response(classify_payload)
+        chat_response = MagicMock()
+        chat_response.choices = [FakeChoice("How can I help further, sir?")]
+        self.mock_client.chat.completions.create.side_effect = [classify_response, chat_response]
+
+        self.brain.think("hi jarvis")
+
+        self.assertEqual(self.brain.last_intent, "chat")
+
+    def test_think_escalates_when_last_intent_was_task_domain_no_keyword(self):
+        # No action keyword in the user text at all - only the sticky
+        # last_intent from the previous turn should trigger escalation.
+        self.brain.last_intent = "daily_task_reminder"
+
+        first_payload = json.dumps({"intent": "chat", "params": {}, "reply": "Not sure."})
+        second_payload = json.dumps(
+            {"intent": "manage_task", "params": {"action": "done", "query": "first"},
+             "reply": "Marking it done."}
+        )
+        first_response = self._prepare_response(first_payload)
+        second_response = MagicMock()
+        second_response.choices = [FakeChoice(second_payload)]
+        self.mock_client.chat.completions.create.side_effect = [first_response, second_response]
+
+        result = self.brain.think("mark the first one done")
+
+        self.assertEqual(result["intent"], "manage_task")
+        self.assertEqual(self.mock_client.chat.completions.create.call_count, 2)
+        second_call_model = self.mock_client.chat.completions.create.call_args_list[1][1]["model"]
+        self.assertEqual(second_call_model, "gpt-4o")
+        self.assertEqual(self.brain.last_intent, "manage_task")
+
+    def test_think_escalates_when_last_intent_was_manage_task(self):
+        self.brain.last_intent = "manage_task"
+
+        first_payload = json.dumps({"intent": "chat", "params": {}, "reply": "Not sure."})
+        second_payload = json.dumps(
+            {"intent": "manage_task", "params": {"action": "add", "description": "call mom"},
+             "reply": "Adding it."}
+        )
+        first_response = self._prepare_response(first_payload)
+        second_response = MagicMock()
+        second_response.choices = [FakeChoice(second_payload)]
+        self.mock_client.chat.completions.create.side_effect = [first_response, second_response]
+
+        result = self.brain.think("also add call mom")
+
+        self.assertEqual(result["intent"], "manage_task")
+        self.assertEqual(self.mock_client.chat.completions.create.call_count, 2)
+
+    def test_think_does_not_escalate_without_sticky_intent_or_keyword(self):
+        # No prior task-domain intent, no action keyword - result should
+        # stay at one call (chat), matching prior (non-sticky) behavior.
+        payload = json.dumps({"intent": "chat", "params": {}, "reply": "Not sure."})
+        classify_response = self._prepare_response(payload)
+        chat_response = MagicMock()
+        chat_response.choices = [FakeChoice("Could you clarify, sir?")]
+        self.mock_client.chat.completions.create.side_effect = [classify_response, chat_response]
+
+        self.brain.think("tell me something interesting")
+
+        # Only the classify call + the chat-reply call - no escalation call.
+        self.assertEqual(self.mock_client.chat.completions.create.call_count, 2)
+
+    def test_last_intent_stops_forcing_escalation_after_intervening_unrelated_intent(self):
+        # Turn 1: task-domain intent sets last_intent.
+        payload1 = json.dumps({"intent": "daily_task_reminder", "params": {}, "reply": "Checking, sir."})
+        self._prepare_response(payload1)
+        self.brain.think("what's on my todo list")
+        self.assertEqual(self.brain.last_intent, "daily_task_reminder")
+
+        # Turn 2: an unrelated intent (chat, no keyword). Since last_intent
+        # is still "daily_task_reminder" going into this turn, it still
+        # gets the one extra escalation attempt (both attempts land on
+        # chat) - but last_intent must update to "chat" afterward, not stay
+        # stuck on the task-domain value.
+        classify_payload = json.dumps({"intent": "chat", "params": {}, "reply": "Hello."})
+        classify_response = self._prepare_response(classify_payload)
+        escalate_response = MagicMock()
+        escalate_response.choices = [FakeChoice(classify_payload)]
+        chat_response = MagicMock()
+        chat_response.choices = [FakeChoice("Good day, sir.")]
+        self.mock_client.chat.completions.create.side_effect = [
+            classify_response, escalate_response, chat_response
+        ]
+        self.brain.think("what a nice day")
+        self.assertEqual(self.brain.last_intent, "chat")
+
+        # Turn 3: another ambiguous chat turn with no keyword - must NOT
+        # escalate anymore, since last_intent is no longer task-domain.
+        payload3 = json.dumps({"intent": "chat", "params": {}, "reply": "Not sure."})
+        classify_response3 = self._prepare_response(payload3)
+        chat_response3 = MagicMock()
+        chat_response3.choices = [FakeChoice("Could you clarify, sir?")]
+        self.mock_client.chat.completions.create.side_effect = [classify_response3, chat_response3]
+        calls_before = self.mock_client.chat.completions.create.call_count
+        self.brain.think("hmm okay")
+
+        # Only 2 more calls (classify + chat reply) - no escalation call.
+        self.assertEqual(
+            self.mock_client.chat.completions.create.call_count - calls_before, 2
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -65,6 +65,11 @@ class TestRunSession(unittest.TestCase):
         self.stt.capture_and_transcribe.return_value = "what time is it"
         self.brain.think.return_value = {"intent": "get_time"}
         self.router.dispatch.return_value = "It is 3 PM, sir."
+        # Mirrors real IntentRouter.dispatch()'s behaviour of stamping
+        # last_effective_intent with the intent it just handled -
+        # run_session() reads this right after dispatch() to update
+        # brain.last_intent for sticky routing (see router.py).
+        self.router.last_effective_intent = "get_time"
 
     @patch("main.write_session_note")
     @patch("main.build_or_update_index")
@@ -107,6 +112,7 @@ class TestRunSession(unittest.TestCase):
         self, mock_consume, mock_sleep, mock_build_index, mock_write_note
     ):
         self.brain.think.return_value = {"intent": "goodbye"}
+        self.router.last_effective_intent = "goodbye"
 
         main_module.run_session(self.stt, self.brain, self.router, self.speaker)
 
@@ -116,6 +122,37 @@ class TestRunSession(unittest.TestCase):
         self.assertEqual(self.brain.history, ["turn1", "turn2"])
         mock_write_note.assert_called_once_with("goodbye", "what time is it", "It is 3 PM, sir.")
         mock_build_index.assert_called_once()
+        # brain.last_intent must reflect the router's effective intent for
+        # this turn (see router.py's last_effective_intent), not just
+        # brain.think()'s raw classification - sticky-routing fix.
+        self.assertEqual(self.brain.last_intent, "goodbye")
+
+    @patch("main.write_session_note")
+    @patch("main.build_or_update_index")
+    @patch("main.time.sleep", return_value=None)
+    @patch("main.consume_history_reset", return_value=False)
+    def test_confirm_turn_updates_brain_last_intent_to_effective_task_domain(
+        self, mock_consume, mock_sleep, mock_build_index, mock_write_note
+    ):
+        """Issue 2 regression: a bare 'yes' confirming a pending
+        daily_task_reminder listing must leave brain.last_intent in the
+        task domain (not overwritten to 'chat' by brain.think()'s raw
+        classification of the bare confirm text), so the *next* turn
+        (e.g. 'mark the first one done') still benefits from sticky
+        routing."""
+        self.stt.capture_and_transcribe.return_value = "yes"
+        # brain.think() raw-classifies the bare "yes" as chat...
+        self.brain.think.return_value = {"intent": "chat", "params": {}, "reply": "yes"}
+        # ...but the router resolved it against a pending
+        # daily_task_reminder_confirm, so its effective intent for the
+        # turn is the task domain, not "chat".
+        self.router.dispatch.return_value = "You have 2 open tasks, sir."
+        self.router.last_effective_intent = "daily_task_reminder"
+        self.brain.last_intent = "chat"  # pre-turn state, should be overwritten
+
+        main_module.run_session(self.stt, self.brain, self.router, self.speaker)
+
+        self.assertEqual(self.brain.last_intent, "daily_task_reminder")
 
 
 if __name__ == "__main__":
