@@ -35,9 +35,18 @@ GOOGLE_SERVICE_ACCOUNT_EMAIL=your-service-account@your-project.iam.gserviceaccou
 GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 GOOGLE_SHEETS_SHEET_NAME=Todos
 
-# Optional — override the sheet URL the UI reads from.
+# Server-side allow-list of spreadsheet IDs the app may read/write. Comma-
+# separated `id` or `id:Label` entries (label optional, shown in the sheet
+# picker dropdown). Required — requests for any other spreadsheet ID are
+# rejected with 403, and the picker only offers IDs listed here.
+ALLOWED_SPREADSHEET_IDS=
+
+# Optional — override the default sheet the UI targets before a selection is
+# made/stored. Must also be listed in ALLOWED_SPREADSHEET_IDS above.
 NEXT_PUBLIC_TODO_SOURCE=
 ```
+
+See `.env.local.example` for a copy-pasteable template.
 
 Generate `SESSION_SECRET` with:
 

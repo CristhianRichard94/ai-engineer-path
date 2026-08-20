@@ -3,8 +3,18 @@ import { GoogleAuth } from "google-auth-library";
 
 const SHEET_ID =
   process.env.SHEET_ID || "1U-r0YqCZ2oXnExBnwdVUtEfVx7fgG8oSLaEG79dN23U";
-const SHEET_TAB = process.env.SHEET_TAB || "Todos";
 const SA_KEY_PATH = process.env.SA_KEY_PATH;
+
+// Each todo status lives in its own sheet tab. Tab name is the source of
+// truth for status — kept identical to the frontend's STATUS_TABS map so
+// both clients operate on the same spreadsheet.
+const STATUS_TABS = {
+  todo: "Todo",
+  "in-progress": "In Progress",
+  done: "Done",
+  cancelled: "Cancelled",
+};
+const ALL_STATUSES = Object.keys(STATUS_TABS);
 
 const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 
@@ -59,18 +69,101 @@ const COLUMNS = [
   "priority",
 ];
 
-/** Read all data rows (excludes header). Each row: { rowIndex (1-based sheet row), id, description, status, source, created, done_date, priority } */
-async function readRows() {
-  const range = `${SHEET_TAB}!A2:G`;
+/** Writes the header row for `title` only if it doesn't already have one
+ * (empty A1 cell). Covers both brand-new tabs and tabs created on a previous
+ * run but interrupted before their header write. */
+async function ensureHeaderRow(title) {
+  const data = await sheetsFetch(`/values/${encodeURIComponent(title)}!A1:G1`);
+  const row = (data.values && data.values[0]) || [];
+  if (row.length > 0 && row[0]) return;
+  await sheetsFetch(
+    `/values/${encodeURIComponent(title)}!A1:G1?valueInputOption=RAW`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ values: [COLUMNS] }),
+    }
+  );
+}
+
+/** Ensures all 4 status tabs exist, creating any that are missing (with a header row). */
+let ensuredTabs = false;
+async function ensureStatusTabs() {
+  if (ensuredTabs) return;
+
+  const meta = await sheetsFetch("?fields=sheets.properties");
+  const existingTitles = new Set(
+    (meta.sheets || []).map((s) => s.properties.title)
+  );
+  const requiredTitles = Object.values(STATUS_TABS);
+  const missing = requiredTitles.filter((t) => !existingTitles.has(t));
+
+  if (missing.length > 0) {
+    try {
+      await sheetsFetch(":batchUpdate", {
+        method: "POST",
+        body: JSON.stringify({
+          requests: missing.map((title) => ({
+            addSheet: { properties: { title } },
+          })),
+        }),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // Another concurrent request (e.g. the frontend) may have created the
+      // same tab(s) first on the shared spreadsheet's first use. Treat
+      // "already exists" as success — the header backfill below re-checks
+      // actual state — instead of failing the whole call.
+      if (!/already exists/i.test(message)) {
+        throw error;
+      }
+    }
+  }
+
+  // Backfill header rows for every required tab, not just the ones just
+  // created — covers tabs that exist but were interrupted before their
+  // header write completed on a previous run.
+  await Promise.all(requiredTitles.map((title) => ensureHeaderRow(title)));
+
+  ensuredTabs = true;
+}
+
+/** Read all data rows for a single tab (excludes header). Each row includes rowIndex (1-based sheet row) and status (tab-derived, overwriting any stored value). */
+async function readRowsForStatus(status) {
+  const tab = STATUS_TABS[status];
+  const range = `${tab}!A2:G`;
   const data = await sheetsFetch(`/values/${encodeURIComponent(range)}`);
   const values = data.values || [];
-  return values.map((row, i) => {
-    const obj = { rowIndex: i + 2 };
-    COLUMNS.forEach((col, idx) => {
-      obj[col] = row[idx] ?? "";
-    });
-    return obj;
-  });
+  return values
+    .map((row, i) => {
+      const obj = { rowIndex: i + 2, tab };
+      COLUMNS.forEach((col, idx) => {
+        obj[col] = row[idx] ?? "";
+      });
+      obj.status = status; // tab is the source of truth, not the stored column
+      return obj;
+    })
+    .filter((r) => r.id);
+}
+
+/** Read all data rows across all 4 status tabs, merged. If the same id
+ * appears in more than one tab (a leftover duplicate from a past partial
+ * move/failure), dedupe by id — keep the first occurrence in tab priority
+ * order (ALL_STATUSES: Todo > In Progress > Done > Cancelled) and log a
+ * warning, so callers never see/act on duplicate ids. */
+async function readRows() {
+  await ensureStatusTabs();
+  const results = await Promise.all(ALL_STATUSES.map(readRowsForStatus));
+  const seen = new Map();
+  for (const row of results.flat()) {
+    if (seen.has(row.id)) {
+      console.warn(
+        `Duplicate task id "${row.id}" found across status tabs; keeping the first occurrence and ignoring the rest.`
+      );
+      continue;
+    }
+    seen.set(row.id, row);
+  }
+  return [...seen.values()];
 }
 
 function generateId() {
@@ -154,6 +247,7 @@ export async function addTask(description, source = "claude", priority) {
       throw new Error("Priority must be an integer between 1 and 5.");
     }
   }
+  await ensureStatusTabs();
   const src = VALID_SOURCES.includes(source) ? source : "other";
   const id = generateId();
   const priorityValue =
@@ -163,7 +257,8 @@ export async function addTask(description, source = "claude", priority) {
   const values = [
     [id, description.trim(), "todo", src, todayDateString(), "", priorityValue],
   ];
-  const range = `${SHEET_TAB}!A:G`;
+  const tab = STATUS_TABS.todo;
+  const range = `${tab}!A:G`;
   await sheetsFetch(
     `/values/${encodeURIComponent(range)}:append?valueInputOption=RAW`,
     { method: "POST", body: JSON.stringify({ values }) }
@@ -209,13 +304,13 @@ export async function editTask(query, description, priority) {
   const data = [];
   if (hasDescription) {
     data.push({
-      range: `${SHEET_TAB}!B${match.rowIndex}`,
+      range: `${match.tab}!B${match.rowIndex}`,
       values: [[description.trim()]],
     });
   }
   if (hasPriority) {
     data.push({
-      range: `${SHEET_TAB}!G${match.rowIndex}`,
+      range: `${match.tab}!G${match.rowIndex}`,
       values: [[String(p)]],
     });
   }
@@ -237,16 +332,102 @@ export async function editTask(query, description, priority) {
   };
 }
 
-let sheetNumericId = null;
-async function getSheetNumericId() {
-  if (sheetNumericId != null) return sheetNumericId;
-  const meta = await sheetsFetch("");
-  const sheet = (meta.sheets || []).find(
-    (s) => s.properties.title === SHEET_TAB
+const sheetNumericIds = new Map();
+async function getSheetNumericId(tab) {
+  if (sheetNumericIds.has(tab)) return sheetNumericIds.get(tab);
+  const meta = await sheetsFetch("?fields=sheets.properties");
+  const sheet = (meta.sheets || []).find((s) => s.properties.title === tab);
+  if (!sheet) throw new Error(`Sheet tab "${tab}" not found.`);
+  sheetNumericIds.set(tab, sheet.properties.sheetId);
+  return sheet.properties.sheetId;
+}
+
+async function deleteRow(tab, rowIndex) {
+  const sheetId = await getSheetNumericId(tab);
+  await sheetsFetch(`:batchUpdate`, {
+    method: "POST",
+    body: JSON.stringify({
+      requests: [
+        {
+          deleteDimension: {
+            range: {
+              sheetId,
+              dimension: "ROWS",
+              startIndex: rowIndex - 1,
+              endIndex: rowIndex,
+            },
+          },
+        },
+      ],
+    }),
+  });
+}
+
+/** Returns the current row number (1-based sheet row) for `id` in `tab`, or
+ * null if not present. */
+async function findRowNumberInTab(tab, id) {
+  const data = await sheetsFetch(`/values/${encodeURIComponent(tab)}!A2:A`);
+  const rows = data.values || [];
+  const index = rows.findIndex((row) => row[0] === id);
+  return index === -1 ? null : index + 2;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Deletes the row currently holding `expectedId` in `tab`, starting from
+ * `rowIndex` as a hint. Before EACH delete attempt (not just once before the
+ * retry loop), re-confirms via a fresh read that `rowIndex` still holds
+ * `expectedId` — a row index captured earlier (or by a previous attempt in
+ * this same loop) may no longer be correct if another write raced it, or if
+ * a prior attempt's delete actually succeeded server-side despite not
+ * getting a clean response. If the id has moved, re-searches the tab for its
+ * current row and retries against that. If the id isn't found anywhere in
+ * the tab, a previous attempt must have already deleted it — treated as
+ * success rather than deleting whatever unrelated row has since shifted into
+ * the stale position. The delete itself is retried a few times with backoff
+ * on transient failures; if all retries fail with no resolution, throws a
+ * clear error instead of silently swallowing it (the caller may have already
+ * appended this row to another tab, so a failed delete here can leave a
+ * duplicate). */
+async function deleteRowSafely(tab, rowIndex, expectedId) {
+  let targetRow = rowIndex;
+  const MAX_ATTEMPTS = 3;
+  let lastError;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const cellData = await sheetsFetch(
+      `/values/${encodeURIComponent(tab)}!A${targetRow}:A${targetRow}`
+    );
+    const actualId =
+      (cellData.values && cellData.values[0] && cellData.values[0][0]) || null;
+    if (actualId !== expectedId) {
+      const relocated = await findRowNumberInTab(tab, expectedId);
+      if (relocated === null) {
+        // Id no longer exists anywhere in this tab — a previous attempt's
+        // deleteDimension call must have actually succeeded server-side even
+        // though we didn't observe a clean response. Treat as already deleted.
+        return;
+      }
+      targetRow = relocated;
+    }
+
+    try {
+      await deleteRow(tab, targetRow);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < MAX_ATTEMPTS) {
+        await sleep(200 * attempt);
+      }
+    }
+  }
+  throw new Error(
+    `Failed to delete row for task ${expectedId} from tab "${tab}" after ${MAX_ATTEMPTS} attempts — ` +
+      `the task may now be duplicated across tabs and needs manual cleanup. Original error: ${
+        lastError instanceof Error ? lastError.message : String(lastError)
+      }`
   );
-  if (!sheet) throw new Error(`Sheet tab "${SHEET_TAB}" not found.`);
-  sheetNumericId = sheet.properties.sheetId;
-  return sheetNumericId;
 }
 
 export async function deleteTask(query) {
@@ -272,24 +453,7 @@ export async function deleteTask(query) {
   }
 
   const match = matches[0];
-  const sheetId = await getSheetNumericId();
-  await sheetsFetch(`:batchUpdate`, {
-    method: "POST",
-    body: JSON.stringify({
-      requests: [
-        {
-          deleteDimension: {
-            range: {
-              sheetId,
-              dimension: "ROWS",
-              startIndex: match.rowIndex - 1,
-              endIndex: match.rowIndex,
-            },
-          },
-        },
-      ],
-    }),
-  });
+  await deleteRowSafely(match.tab, match.rowIndex, match.id);
 
   return {
     deleted: true,
@@ -325,22 +489,26 @@ export async function markTaskDone(query) {
   }
 
   const match = matches[0];
-  await sheetsFetch(`/values:batchUpdate`, {
-    method: "POST",
-    body: JSON.stringify({
-      valueInputOption: "RAW",
-      data: [
-        {
-          range: `${SHEET_TAB}!C${match.rowIndex}`,
-          values: [["done"]],
-        },
-        {
-          range: `${SHEET_TAB}!F${match.rowIndex}`,
-          values: [[todayDateString()]],
-        },
-      ],
-    }),
-  });
+  const doneTab = STATUS_TABS.done;
+
+  // Move the row to the Done tab: append with status/done_date updated, then
+  // delete the original row from its current tab.
+  const values = [
+    [
+      match.id,
+      match.description,
+      "done",
+      match.source,
+      match.created,
+      todayDateString(),
+      match.priority,
+    ],
+  ];
+  await sheetsFetch(
+    `/values/${encodeURIComponent(doneTab)}!A:G:append?valueInputOption=RAW`,
+    { method: "POST", body: JSON.stringify({ values }) }
+  );
+  await deleteRowSafely(match.tab, match.rowIndex, match.id);
 
   return {
     moved: true,

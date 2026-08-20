@@ -50,12 +50,18 @@ class AbortedPatchError extends Error {
     }
 }
 
-async function patchTodo(source: string, id: string, updates: Record<string, unknown>, signal?: AbortSignal) {
+async function patchTodo(
+    source: string,
+    id: string,
+    updates: Record<string, unknown>,
+    signal?: AbortSignal,
+    currentStatus?: TodoStatus
+) {
     try {
         const response = await fetch("/api/todos", {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ source, id, updates }),
+            body: JSON.stringify({ source, id, updates, currentStatus }),
             signal,
         });
         if (!response.ok) {
@@ -194,7 +200,7 @@ export default function TodoItem({ todo, source, onChange, onSavingChange }: Tod
         statusSpinnerTimeoutRef.current = spinnerTimeout;
 
         try {
-            await patchTodo(source, todo.id, updates, controller.signal);
+            await patchTodo(source, todo.id, updates, controller.signal, previousStatus);
             if (statusTokenRef.current !== token) return;
             clearTimeout(spinnerTimeout);
             setShowStatusSpinner(false);
@@ -252,7 +258,7 @@ export default function TodoItem({ todo, source, onChange, onSavingChange }: Tod
         prioritySpinnerTimeoutRef.current = spinnerTimeout;
 
         try {
-            await patchTodo(source, todo.id, updates, controller.signal);
+            await patchTodo(source, todo.id, updates, controller.signal, status);
             if (priorityTokenRef.current !== token) return;
             clearTimeout(spinnerTimeout);
             setShowPrioritySpinner(false);
@@ -328,7 +334,7 @@ export default function TodoItem({ todo, source, onChange, onSavingChange }: Tod
         descriptionSpinnerTimeoutRef.current = spinnerTimeout;
 
         try {
-            await patchTodo(source, todo.id, { description: trimmed }, controller.signal);
+            await patchTodo(source, todo.id, { description: trimmed }, controller.signal, status);
             if (descriptionTokenRef.current !== token) return;
             clearTimeout(spinnerTimeout);
             setShowDescriptionSpinner(false);

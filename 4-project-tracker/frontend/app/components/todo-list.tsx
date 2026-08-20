@@ -25,6 +25,7 @@ function isDone(todo: Todo): boolean {
 export default function TodoList({ source }: { source: string }) {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [retryCount, setRetryCount] = useState(0);
   const [showDone, setShowDone] = useState(false);
   const busyIdsRef = useRef<Set<string>>(new Set());
@@ -43,6 +44,15 @@ export default function TodoList({ source }: { source: string }) {
 
   useEffect(() => {
     let cancelled = false;
+
+    // Reset stale state from the previous source before fetching, so we
+    // never briefly render another sheet's todos while the new sheet loads.
+    setTodos([]);
+    setFetchError(null);
+    setIsLoading(true);
+    busyIdsRef.current.clear();
+    pendingNewIdsRef.current.clear();
+
     const fetchTodos = async () => {
       try {
         const response = await fetch(`/api/todos?source=${encodeURIComponent(source)}`);
@@ -67,6 +77,10 @@ export default function TodoList({ source }: { source: string }) {
         if (!cancelled) {
           console.error(error);
           setFetchError(error instanceof Error ? error.message : "Couldn't load todos. Please try again.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
         }
       }
     }
@@ -172,6 +186,11 @@ export default function TodoList({ source }: { source: string }) {
     return (
         <div className="flex flex-col w-full flex-1 min-h-0 gap-3">
           <AddTodoForm source={source} onCreated={handleCreated} />
+          {isLoading && !fetchError && (
+            <p className="text-sm text-gray-400 shrink-0" role="status" aria-live="polite">
+              Loading todos…
+            </p>
+          )}
           {fetchError && (
             <div role="alert" className="flex items-center gap-2 text-sm text-red-400 shrink-0">
               <span aria-hidden="true">⚠</span>
