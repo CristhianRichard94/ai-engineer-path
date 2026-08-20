@@ -103,7 +103,8 @@ class JarvisBrainTests(unittest.TestCase):
         self.assertEqual(len(sent_messages) - 1, self.brain.max_history)
         self.assertEqual(sent_messages[-1]["content"], "latest command")
 
-    def test_think_calls_generate_chat_reply_for_chat_intent(self):
+    @patch("brain.retrieve", return_value=[])
+    def test_think_calls_generate_chat_reply_for_chat_intent(self, mock_retrieve):
         classify_payload = json.dumps({"intent": "chat", "params": {}, "reply": "Hello sir."})
         classify_response = self._prepare_response(classify_payload)
         chat_response = MagicMock()
